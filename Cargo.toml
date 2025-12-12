@@ -1,0 +1,17 @@
+[package]
+name = "resource-island-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { version = "0.8.4", features = ["http2", "ws", "tokio", "tower-log", "json"] }
+tracing = "0.1.43"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+tokio = { version = "1.45.1", features = ["full"] }
+anyhow = "1.0.100"
+thiserror = "2.0.17"
+parking_lot = { version = "0.12", features = ["nightly"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_yaml = "0.9.34"
+crossbeam-channel = "0.5"
+serde_json = "1.0.145"
