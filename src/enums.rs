@@ -44,7 +44,7 @@ impl Into<&'static str> for &Items {
     }
 }
 #[derive(Eq, PartialEq, Hash, Copy, Clone)]
-pub enum Buildings {
+pub enum Building {
     Farm,
     SuperFarm,
     Miner,
@@ -52,7 +52,7 @@ pub enum Buildings {
     Bank,
     Cannon
 }
-impl TryFrom<&'static str> for Buildings {
+impl TryFrom<&'static str> for Building {
     type Error = NoSuchFound;
 
     fn try_from(value: &'static str) -> Result<Self, Self::Error> {
@@ -73,18 +73,40 @@ impl TryFrom<&'static str> for Buildings {
         }
     }
 }
-impl Into<&'static str> for &Buildings {
+impl Into<&'static str> for &Building {
     fn into(self) -> &'static str {
         match self {
-            Buildings::Farm => "农场",
-            Buildings::SuperFarm => "无敌农场",
-            Buildings::Miner => "矿机",
-            Buildings::SuperMiner => "高级矿机",
-            Buildings::Bank => "银行",
-            Buildings::Cannon => "炮台",
+            Building::Farm => "农场",
+            Building::SuperFarm => "无敌农场",
+            Building::Miner => "矿机",
+            Building::SuperMiner => "高级矿机",
+            Building::Bank => "银行",
+            Building::Cannon => "炮台",
         }
     }
 }
 pub enum PlayerToServerMessage {
-    
+    Investment(InvestmentAction),
+    Bid(BidAction),
+}
+pub enum ServerToPlayerMessage {
+
+}
+pub enum ServerBroadcastMessage {
+
+}
+pub enum InvestmentAction {
+    Explore,
+    Exchange,
+    Build(Building),
+    Ore,
+    Pick,
+    Mine,
+    Bank(u32),
+    End,
+}
+pub enum BidAction {
+    PlaceBid(u32),
+    TakeItem(u32),
+    EndTake,
 }

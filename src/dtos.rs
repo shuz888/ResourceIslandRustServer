@@ -34,7 +34,7 @@ impl From<&GameState> for GameStateResponse {
     }
 }
 impl GameStateResponse {
-    pub fn with_unauthorized() -> GameStateResponse {
+    pub fn with_error() -> GameStateResponse {
         GameStateResponse {
             players: HashSet::new(),
             market: HashSet::new(),
@@ -73,7 +73,7 @@ impl From<&Player> for PlayerInfoResponse {
     }
 }
 impl PlayerInfoResponse {
-    pub fn with_unauthorized() -> PlayerInfoResponse {
+    pub fn with_error() -> PlayerInfoResponse {
         PlayerInfoResponse {
             action_points: 0,
             resources: HashMap::new(),

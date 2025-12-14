@@ -4,14 +4,11 @@ pub mod enums;
 mod game;
 
 use crate::config::GameCfg;
-use crate::enums::{Buildings, Items};
+use crate::enums::{Building, Items};
 use parking_lot::{Mutex, RwLock};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use thiserror::Error;
-// Functions
-
-// Enums
 #[derive(Error, Debug)]
 pub enum NoSuchFound {
     #[error("你传入的{0}物品无法找到对应枚举量")]
@@ -36,7 +33,7 @@ impl AppState {
 pub struct Player {
     resources: HashMap<Items, u32>,
     action_points: u32,
-    buildings: HashSet<Buildings>,
+    buildings: HashSet<Building>,
     bank_money: u32,
 }
 impl Player {
@@ -88,7 +85,3 @@ impl GameState {
         self.resource_values = (&conf.game_rules.resource_values_default.clone()).into();
     }
 }
-
-// DTOs
-
-// Routes

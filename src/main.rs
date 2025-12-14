@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use axum::routing::{any, get};
-use tracing::{trace, info, warn, error};
+use tracing::{trace, info, error};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use resource_island_server::GameState;
 use crate::routes::{get_game_state, get_player_info, root, ws_handler};
@@ -21,7 +21,7 @@ async fn main(){
         cfg,
         game_state
     ));
-    let whole_address = format!("{}:{}", state.cfg.lock().server.bind_host, state.cfg.lock().server.bind_port);
+    let state_tmp = state.clone();
     trace!("正在创建路由");
     let app = axum::Router::new()
         .route("/", get(root))
@@ -29,6 +29,9 @@ async fn main(){
         .route("/playerinfo/{player_name}", get(get_player_info))
         .route("/ws/{player_name}", any(ws_handler))
         .with_state(state);
+    let cfg = state_tmp.cfg.lock();
+    let whole_address = format!("{}:{}", cfg.server.bind_host.clone(), cfg.server.bind_port.clone());
+    drop(cfg);
     trace!("正在创建监听器");
     let listener = tokio::net::TcpListener::bind(whole_address).await.unwrap();
     info!("正在开启Web路由");

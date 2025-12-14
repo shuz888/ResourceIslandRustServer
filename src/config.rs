@@ -1,18 +1,23 @@
 use std::collections::HashMap;
 use std::fs::File;
 use serde::{Deserialize, Serialize};
-use tracing::trace;
+use tracing::{error, info, trace};
 use crate::enums::Items;
 
 pub async fn load_configuration(file_name: &str) -> Result<GameCfg, anyhow::Error>{
-    trace!("YAML configurations loading...");
+    info!("YAML configurations loading...");
     if std::path::Path::new(file_name).exists() == false{
         let file = File::create(file_name)?;
         serde_yaml::to_writer(file, &GameCfg::with_defaults())?;
     }
     let file = File::open(file_name)?;
-    let cfg: GameCfg = serde_yaml::from_reader(file)?;
-    Ok(cfg)
+    let cfg = serde_yaml::from_reader(file);
+    if let Err(e) = &cfg {
+        error!("Failed to load YAML configurations: {}", e);
+        return Ok(GameCfg::with_defaults());
+    }
+    trace!("loaded");
+    Ok(cfg?)
 }
 pub async fn save_configuration(file_name: &str, cfg: GameCfg) -> Result<(), anyhow::Error>{
     let file = File::create(file_name)?;
