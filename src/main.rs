@@ -3,7 +3,7 @@ use axum::routing::{any, get};
 use tracing::{trace, info, error};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use resource_island_server::GameState;
-use crate::routes::{get_game_state, get_player_info, root, ws_handler};
+use crate::routes::{get_game_state, get_player_info_with_query, get_player_info_with_path, root, ws_handler};
 
 mod routes;
 
@@ -26,8 +26,9 @@ async fn main(){
     let app = axum::Router::new()
         .route("/", get(root))
         .route("/gamestate", get(get_game_state))
-        .route("/playerinfo/{player_name}", get(get_player_info))
+        .route("/playerinfo/{player_name}", get(get_player_info_with_path))
         .route("/ws/{player_name}", any(ws_handler))
+        .route("/playerinfo", get(get_player_info_with_query))
         .with_state(state);
     let cfg = state_tmp.cfg.lock();
     let whole_address = format!("{}:{}", cfg.server.bind_host.clone(), cfg.server.bind_port.clone());
