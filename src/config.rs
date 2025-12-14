@@ -111,6 +111,18 @@ impl DeckCfg {
         }
     }
 }
+impl Into<HashMap<Items, u32>> for &DeckCfg {
+    fn into(self) -> HashMap<Items, u32> {
+        let mut res = HashMap::new();
+        res.insert(Items::Diamond, self.diamond);
+        res.insert(Items::Gold, self.gold);
+        res.insert(Items::Wood, self.wood);
+        res.insert(Items::Ore, self.ore);
+        res.insert(Items::Food, self.food);
+        res.insert(Items::Iron, self.iron);
+        res
+    }
+}
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResourceValuesDefault {
     pub diamond: u32,

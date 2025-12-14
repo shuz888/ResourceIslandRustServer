@@ -2,6 +2,7 @@ use std::convert::TryFrom;
 use crate::NoSuchFound;
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone)]
+#[derive(Debug)]
 pub enum Items {
     Gold,
     Wood,
@@ -93,7 +94,9 @@ pub enum ServerToPlayerMessage {
 
 }
 pub enum ServerBroadcastMessage {
-
+    PhaseChanged{ epoch: u32, phase: u32 },
+    DataRequired{ epoch: u32, phase: u32 },
+    GameStart,
 }
 pub enum InvestmentAction {
     Explore,

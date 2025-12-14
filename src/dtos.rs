@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
 use serde::Serialize;
+use tracing::trace;
 use crate::{GameState, Player};
 
 #[derive(Serialize)]
 pub struct GameStateResponse {
-    pub players: HashSet<&'static str>,
-    pub market: HashSet<&'static str>,
+    pub players: Vec<&'static str>,
+    pub market: Vec<&'static str>,
     pub epoch: u32,
     pub phase: u32,
     pub values: HashMap<&'static str, u32>,
@@ -13,8 +14,9 @@ pub struct GameStateResponse {
 }
 impl From<&GameState> for GameStateResponse {
     fn from(value: &GameState) -> Self {
+        trace!("{:?}", value.market);
         let market = value.market.iter()
-            .map(|x| x.into()).collect::<HashSet<&'static str>>();
+            .map(|x| x.into()).collect::<Vec<&'static str>>();
         let epoch = value.epoch;
         let phase = value.phase;
         let started = value.started;
@@ -22,7 +24,7 @@ impl From<&GameState> for GameStateResponse {
             .map(|(item, &v)| (item.into(), v)).collect::<HashMap<&'static str, u32>>();
         let players = value.players.keys()
             .cloned()
-            .collect::<HashSet<&'static str>>();
+            .collect::<Vec<&'static str>>();
         Self {
             players,
             market,
@@ -36,8 +38,8 @@ impl From<&GameState> for GameStateResponse {
 impl GameStateResponse {
     pub fn with_error() -> GameStateResponse {
         GameStateResponse {
-            players: HashSet::new(),
-            market: HashSet::new(),
+            players: Vec::new(),
+            market: Vec::new(),
             epoch: 0,
             phase: 0,
             values: HashMap::new(),
@@ -49,7 +51,7 @@ impl GameStateResponse {
 pub struct PlayerInfoResponse {
     action_points: u32,
     resources: HashMap<&'static str, u32>,
-    buildings: HashSet<&'static str>,
+    buildings: Vec<&'static str>,
     bank_money: u32,
 }
 impl From<&Player> for PlayerInfoResponse {
@@ -62,7 +64,7 @@ impl From<&Player> for PlayerInfoResponse {
             }).collect::<HashMap<&'static str, u32>>();
         let buildings = value.buildings.iter()
             .map(|x| x.into())
-            .collect::<HashSet<&'static str>>();
+            .collect::<Vec<&'static str>>();
         let bank_money = value.bank_money;
         Self {
             action_points,
@@ -77,7 +79,7 @@ impl PlayerInfoResponse {
         PlayerInfoResponse {
             action_points: 0,
             resources: HashMap::new(),
-            buildings: HashSet::new(),
+            buildings: Vec::new(),
             bank_money: 0
         }
     }

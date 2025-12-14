@@ -15,7 +15,7 @@ async fn main(){
     trace!("正在创建状态对象");
     let cfg = resource_island_server::config::load_configuration("config.yaml").await.unwrap();
     let mut game_state = GameState::new();
-    game_state.apply_configurations(&cfg);
+    game_state.initialize(&cfg);
     game_state.players.insert("测试玩家", resource_island_server::Player::new());
     let state = Arc::new(resource_island_server::AppState::new(
         cfg,

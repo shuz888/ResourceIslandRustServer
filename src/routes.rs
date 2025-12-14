@@ -5,6 +5,7 @@ use axum::response::{IntoResponse, Json};
 use resource_island_server::dtos::{GameStateResponse, PlayerInfoResponse};
 use resource_island_server::AppState;
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::sync::Arc;
 
 pub async fn root() -> &'static str {
@@ -31,7 +32,8 @@ pub async fn get_game_state(State(state): State<Arc<AppState>>, Query(args): Que
         }
     }
     let state_guard = state.game_state.read();
-    (StatusCode::OK, Json(GameStateResponse::from(&*state_guard)))
+    let state_guard = state_guard.deref();
+    (StatusCode::OK, Json(GameStateResponse::from(state_guard)))
 }
 pub async fn get_player_info_with_path(State(state): State<Arc<AppState>>, Path(player_name): Path<String>, Query(args): Query<HashMap<String, String>>) -> impl IntoResponse {
     let cfg = state.cfg.lock();
@@ -117,6 +119,5 @@ pub async fn ws_handler(State(state): State<Arc<AppState>>, Path(player_name): P
                 return;
             }
         }
-        // WebSocket handling logic goes here
     })
 }
