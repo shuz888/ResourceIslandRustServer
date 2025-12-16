@@ -1,13 +1,14 @@
 pub mod config;
 pub mod dtos;
 pub mod enums;
-mod game;
+pub mod game;
 
 use crate::config::GameCfg;
 use crate::enums::{Building, Items, ServerBroadcastMessage, ServerToPlayerMessage};
 use parking_lot::{Mutex, RwLock};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use axum::extract::ws::WebSocket;
 use rand::prelude::SliceRandom;
 use rand::Rng;
 use thiserror::Error;
@@ -100,7 +101,7 @@ impl GameState {
             epoch: 1,
             phase: 1,
             resource_values: HashMap::new(),
-            started: true
+            started: false
         };
         res.resource_values.insert(Items::Diamond, 8);
         res.resource_values.insert(Items::Gold, 6);

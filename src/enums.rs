@@ -86,18 +86,22 @@ impl Into<&'static str> for &Building {
         }
     }
 }
+#[derive(Clone)]
 pub enum PlayerToServerMessage {
-    Investment(InvestmentAction),
-    Bid(BidAction),
+    Investment { from: &'static str, action: InvestmentAction},
+    Bid { from: &'static str, action: BidAction},
 }
+#[derive(Clone)]
 pub enum ServerToPlayerMessage {
-
+    Broadcast { to: &'static str, raw: ServerBroadcastMessage }
 }
+#[derive(Clone)]
 pub enum ServerBroadcastMessage {
-    PhaseChanged{ epoch: u32, phase: u32 },
-    DataRequired{ epoch: u32, phase: u32 },
+    PhaseChanged { epoch: u32, phase: u32 },
+    DataRequired { epoch: u32, phase: u32 },
     GameStart,
 }
+#[derive(Clone)]
 pub enum InvestmentAction {
     Explore,
     Exchange,
@@ -108,6 +112,7 @@ pub enum InvestmentAction {
     Bank(u32),
     End,
 }
+#[derive(Clone)]
 pub enum BidAction {
     PlaceBid(u32),
     TakeItem(u32),

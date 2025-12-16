@@ -7,6 +7,7 @@ use resource_island_server::AppState;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
+use resource_island_server::enums::ServerBroadcastMessage;
 
 pub async fn root() -> &'static str {
     "You are all set!"
