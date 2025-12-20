@@ -1,8 +1,7 @@
 use std::convert::TryFrom;
 use crate::NoSuchFound;
 
-#[derive(Eq, Hash, PartialEq, Copy, Clone)]
-#[derive(Debug)]
+#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
 pub enum Items {
     Gold,
     Wood,
@@ -44,7 +43,7 @@ impl Into<&'static str> for &Items {
         }
     }
 }
-#[derive(Eq, PartialEq, Hash, Copy, Clone)]
+#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug)]
 pub enum Building {
     Farm,
     SuperFarm,
@@ -88,12 +87,12 @@ impl Into<&'static str> for &Building {
 }
 #[derive(Clone)]
 pub enum PlayerToServerMessage {
-    Investment { from: &'static str, action: InvestmentAction},
-    Bid { from: &'static str, action: BidAction},
+    Investment { action: InvestmentAction },
+    Bid { action: BidAction},
 }
 #[derive(Clone)]
 pub enum ServerToPlayerMessage {
-    Broadcast { to: &'static str, raw: ServerBroadcastMessage }
+    Broadcast { raw: ServerBroadcastMessage },
 }
 #[derive(Clone)]
 pub enum ServerBroadcastMessage {

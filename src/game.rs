@@ -16,11 +16,8 @@ pub fn game_main_loop(app_state: Arc<AppState>) {
         }
     }
     {
-        let channels = &app_state.channels;
-        match channels.server_broadcast.sender.clone().send(ServerBroadcastMessage::GameStart) {
-            Ok(_) => (),
-            Err(_) => { return; }
-        }
+        let game_state = app_state.game_state.read();
+        game_state.broadcast(ServerBroadcastMessage::GameStart);
     }
     loop {
         {
@@ -28,5 +25,6 @@ pub fn game_main_loop(app_state: Arc<AppState>) {
                 break;
             }
         }
+        
     }
 }

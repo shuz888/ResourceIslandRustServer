@@ -4,13 +4,11 @@ pub mod enums;
 pub mod game;
 
 use crate::config::GameCfg;
-use crate::enums::{Building, Items, ServerBroadcastMessage, ServerToPlayerMessage};
+use crate::enums::{Building, Items, PlayerToServerMessage, ServerBroadcastMessage, ServerToPlayerMessage};
 use parking_lot::{Mutex, RwLock};
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use axum::extract::ws::WebSocket;
 use rand::prelude::SliceRandom;
-use rand::Rng;
+use std::collections::HashMap;
+use std::sync::Arc;
 use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum NoSuchFound {
@@ -20,30 +18,15 @@ pub enum NoSuchFound {
     NoSuchBuildings(&'static str)
 }
 
-// Structs
 pub struct AppState {
     pub cfg: Arc<Mutex<GameCfg>>,
     pub game_state: Arc<RwLock<GameState>>,
-    pub channels: Channels,
 }
 impl AppState {
     pub fn new(cfg: GameCfg, game_state: GameState) -> AppState {
         Self {
             cfg: Arc::new(Mutex::new(cfg)),
             game_state: Arc::new(RwLock::new(game_state)),
-            channels: Channels::new(),
-        }
-    }
-}
-pub struct Channels {
-    pub server_to_player: Channel<ServerToPlayerMessage>,
-    pub server_broadcast: Channel<ServerBroadcastMessage>,
-}
-impl Channels {
-    pub fn new() -> Channels {
-        Channels {
-            server_to_player: Channel::new(),
-            server_broadcast: Channel::new(),
         }
     }
 }
@@ -63,16 +46,20 @@ impl<T> Channel<T> {
 pub struct Player {
     pub resources: HashMap<Items, u32>,
     pub action_points: u32,
-    pub buildings: HashSet<Building>,
+    pub buildings: Vec<Building>,
     pub bank_money: u32,
+    pub from_channel: Channel<PlayerToServerMessage>,
+    pub to_channel: Channel<ServerToPlayerMessage>,
 }
 impl Player {
     pub fn new() -> Player{
         let mut res = Self {
             resources: HashMap::new(),
             action_points: 0,
-            buildings: HashSet::new(),
+            buildings: Vec::new(),
             bank_money: 0,
+            from_channel: Channel::new(),
+            to_channel: Channel::new(),
         };
         res.resources.insert(Items::Gold, 0);
         res.resources.insert(Items::Iron, 0);
@@ -127,6 +114,15 @@ impl GameState {
             self.current_deck.shuffle(&mut rng);
             let mut cards: Vec<Items> = self.current_deck.drain(0..conf.game_rules.prepare.draw_cards as usize).collect();
             self.market.append(&mut cards);
+        }
+    }
+    pub fn broadcast(&self, message: ServerBroadcastMessage) {
+        for (_, player) in self.players.iter() {
+            let _ = player.to_channel.sender.send(
+                ServerToPlayerMessage::Broadcast {
+                    raw: message.clone()
+                }
+            );
         }
     }
 }
