@@ -5,7 +5,7 @@ pub mod game;
 
 use crate::config::GameCfg;
 use crate::enums::{Building, Items, PlayerToServerMessage, ServerBroadcastMessage, ServerToPlayerMessage};
-use parking_lot::{Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock};
 use rand::prelude::SliceRandom;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -31,15 +31,15 @@ impl AppState {
     }
 }
 pub struct Channel<T> {
-    pub sender: crossbeam_channel::Sender<T>,
-    pub receiver: crossbeam_channel::Receiver<T>,
+    pub sender: tokio::sync::mpsc::Sender<T>,
+    pub receiver: Arc<Mutex<tokio::sync::mpsc::Receiver<T>>>,
 }
 impl<T> Channel<T> {
     pub fn new() -> Channel<T> {
-        let (s, r) = crossbeam_channel::bounded(250);
+        let (s, r) = tokio::sync::mpsc::channel(255);
         Channel {
             sender: s,
-            receiver: r,
+            receiver: Arc::new(Mutex::new(r)),
         }
     }
 }
@@ -52,7 +52,7 @@ pub struct Player {
     pub to_channel: Channel<ServerToPlayerMessage>,
 }
 impl Player {
-    pub fn new() -> Player{
+    pub fn new() -> Player {
         let mut res = Self {
             resources: HashMap::new(),
             action_points: 0,
@@ -68,6 +68,16 @@ impl Player {
         res.resources.insert(Items::Ore, 0);
         res.resources.insert(Items::Food, 0);
         res
+    }
+    pub fn with_cfg(cfg: &GameCfg) -> Player {
+        let mut res = Self::new();
+        cfg.game_rules.prepare.defaults_give_player.apply_to_player(&mut res);
+        res
+    }
+}
+impl Default for Player {
+    fn default() -> Self {
+        Self::new()
     }
 }
 pub struct GameState {
@@ -98,11 +108,11 @@ impl GameState {
         res.resource_values.insert(Items::Iron, 2);
         res
     }
-    fn apply_configurations(&mut self, conf: &GameCfg) {
+    async fn apply_configurations(&mut self, conf: &GameCfg) {
         self.resource_values = (&conf.game_rules.resource_values_default.clone()).into();
     }
-    pub fn initialize(&mut self, conf: &GameCfg) {
-        self.apply_configurations(conf);
+    pub async fn initialize(&mut self, conf: &GameCfg) {
+        self.apply_configurations(conf).await;
         let deck: HashMap<Items, u32> = (&conf.game_rules.prepare.deck).into();
         deck.iter().for_each(|(x, y)| {
             for _ in 0..*y {
@@ -116,13 +126,34 @@ impl GameState {
             self.market.append(&mut cards);
         }
     }
-    pub fn broadcast(&self, message: ServerBroadcastMessage) {
+    pub async fn broadcast(&self, message: ServerBroadcastMessage) {
         for (_, player) in self.players.iter() {
             let _ = player.to_channel.sender.send(
                 ServerToPlayerMessage::Broadcast {
                     raw: message.clone()
                 }
-            );
+            ).await;
         }
+    }
+    pub async fn register_player(&mut self, player_name: String, player: Player) -> Result<(), String> {
+        if self.players.contains_key(player_name.as_str()) {
+            Err("Player already exists".to_string())
+        } else {
+            self.players.insert(player_name.leak(), player);
+            Ok(())
+        }
+    }
+    pub async fn unregister_player(&mut self, player_name: String) -> Result<(), String> {
+        if !self.players.contains_key(player_name.as_str()) {
+            Err("Player not exist".to_string())
+        }else {
+            self.players.remove(player_name.as_str());
+            Ok(())
+        }
+    }
+}
+impl Default for GameState {
+    fn default() -> Self {
+        Self::new()
     }
 }

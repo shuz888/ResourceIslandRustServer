@@ -1,5 +1,6 @@
-use std::convert::TryFrom;
 use crate::NoSuchFound;
+use serde::Serialize;
+use std::convert::TryFrom;
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
 pub enum Items {
@@ -8,7 +9,7 @@ pub enum Items {
     Diamond,
     Ore,
     Food,
-    Iron
+    Iron,
 }
 impl TryFrom<&'static str> for Items {
     type Error = NoSuchFound;
@@ -16,17 +17,17 @@ impl TryFrom<&'static str> for Items {
     fn try_from(value: &'static str) -> Result<Self, Self::Error> {
         if value == "金币" {
             Ok(Self::Gold)
-        }else if value == "钻石" {
+        } else if value == "钻石" {
             Ok(Self::Diamond)
-        }else if value == "木材" {
+        } else if value == "木材" {
             Ok(Self::Wood)
-        }else if value == "矿石" {
+        } else if value == "矿石" {
             Ok(Self::Ore)
-        }else if value == "铁" {
+        } else if value == "铁" {
             Ok(Self::Iron)
-        }else if value == "食物" {
+        } else if value == "食物" {
             Ok(Self::Food)
-        }else {
+        } else {
             Err(NoSuchFound::NoSuchItems(value))
         }
     }
@@ -39,7 +40,7 @@ impl Into<&'static str> for &Items {
             Items::Diamond => "钻石",
             Items::Ore => "矿石",
             Items::Food => "食物",
-            Items::Iron => "铁"
+            Items::Iron => "铁",
         }
     }
 }
@@ -50,7 +51,7 @@ pub enum Building {
     Miner,
     SuperMiner,
     Bank,
-    Cannon
+    Cannon,
 }
 impl TryFrom<&'static str> for Building {
     type Error = NoSuchFound;
@@ -58,17 +59,17 @@ impl TryFrom<&'static str> for Building {
     fn try_from(value: &'static str) -> Result<Self, Self::Error> {
         if value == "农场" {
             Ok(Self::Farm)
-        }else if value.contains("农场") && value != "农场" {
+        } else if value.contains("农场") && value != "农场" {
             Ok(Self::SuperFarm)
-        }else if value == "矿机" {
+        } else if value == "矿机" {
             Ok(Self::Miner)
-        }else if value.contains("矿机") && value != "矿机" {
+        } else if value.contains("矿机") && value != "矿机" {
             Ok(Self::SuperMiner)
-        }else if value == "银行" {
+        } else if value == "银行" {
             Ok(Self::Bank)
-        }else if value == "炮台" {
+        } else if value == "炮台" {
             Ok(Self::Cannon)
-        }else {
+        } else {
             Err(NoSuchFound::NoSuchBuildings(value))
         }
     }
@@ -88,13 +89,29 @@ impl Into<&'static str> for &Building {
 #[derive(Clone)]
 pub enum PlayerToServerMessage {
     Investment { action: InvestmentAction },
-    Bid { action: BidAction},
+    Bid { action: BidAction },
 }
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
+#[serde(tag = "type", content = "target")]
+#[serde(rename_all = "lowercase")]
+#[serde(rename_all_fields = "lowercase")]
 pub enum ServerToPlayerMessage {
+    #[serde(serialize_with = "serialize_stp_broadcast")]
     Broadcast { raw: ServerBroadcastMessage },
 }
-#[derive(Clone)]
+fn serialize_stp_broadcast<S>(
+    raw: &ServerBroadcastMessage,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    raw.serialize(serializer)
+}
+#[derive(Clone, Serialize)]
+#[serde(tag = "type", content = "target")]
+#[serde(rename_all = "lowercase")]
+#[serde(rename_all_fields = "lowercase")]
 pub enum ServerBroadcastMessage {
     PhaseChanged { epoch: u32, phase: u32 },
     DataRequired { epoch: u32, phase: u32 },

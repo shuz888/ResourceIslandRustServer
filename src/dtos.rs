@@ -37,6 +37,11 @@ impl From<&GameState> for GameStateResponse {
 }
 impl GameStateResponse {
     pub fn with_error() -> GameStateResponse {
+        Default::default()
+    }
+}
+impl Default for GameStateResponse {
+    fn default() -> Self {
         GameStateResponse {
             players: Vec::new(),
             market: Vec::new(),
@@ -76,6 +81,11 @@ impl From<&Player> for PlayerInfoResponse {
 }
 impl PlayerInfoResponse {
     pub fn with_error() -> PlayerInfoResponse {
+        Default::default()
+    }
+}
+impl Default for PlayerInfoResponse {
+    fn default() -> Self {
         PlayerInfoResponse {
             action_points: 0,
             resources: HashMap::new(),

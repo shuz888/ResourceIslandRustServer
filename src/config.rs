@@ -3,6 +3,7 @@ use std::fs::File;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace};
 use crate::enums::Items;
+use crate::Player;
 
 pub async fn load_configuration(file_name: &str) -> Result<GameCfg, anyhow::Error>{
     info!("YAML configurations loading...");
@@ -77,7 +78,7 @@ impl GameRules {
 pub struct PrepareCfg {
     pub total_epochs: u32,
     pub draw_cards: u32,
-    pub default_ap: u32,
+    pub defaults_give_player: DefaultsGivePlayerCfg,
     pub deck: DeckCfg
 }
 impl PrepareCfg {
@@ -85,9 +86,41 @@ impl PrepareCfg {
         PrepareCfg {
             total_epochs: 10,
             draw_cards: 10,
-            default_ap: 5,
+            defaults_give_player: DefaultsGivePlayerCfg::with_defaults(),
             deck: DeckCfg::with_defaults(),
         }
+    }
+}
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DefaultsGivePlayerCfg {
+    pub ap: u32,
+    pub diamond: u32,
+    pub gold: u32,
+    pub wood: u32,
+    pub ore: u32,
+    pub food: u32,
+    pub iron: u32,
+}
+impl DefaultsGivePlayerCfg {
+    pub fn with_defaults() -> DefaultsGivePlayerCfg {
+        DefaultsGivePlayerCfg {
+            ap: 5,
+            diamond: 0,
+            gold: 0,
+            wood: 0,
+            ore: 0,
+            food: 5,
+            iron: 0,
+        }
+    }
+    pub fn apply_to_player(&self, player: &mut Player) {
+        player.action_points = self.ap;
+        player.resources.insert(Items::Gold, self.gold);
+        player.resources.insert(Items::Ore, self.ore);
+        player.resources.insert(Items::Diamond, self.diamond);
+        player.resources.insert(Items::Wood, self.wood);
+        player.resources.insert(Items::Iron, self.iron);
+        player.resources.insert(Items::Food, self.food);
     }
 }
 #[derive(Serialize, Deserialize, Debug)]

@@ -16,8 +16,11 @@ async fn main(){
     trace!("正在创建状态对象");
     let cfg = resource_island_server::config::load_configuration("config.yaml").await.unwrap();
     let mut game_state = GameState::new();
-    game_state.initialize(&cfg);
-    game_state.players.insert("测试玩家", resource_island_server::Player::new());
+    game_state.initialize(&cfg).await;
+    if option_env!("RSILS_DEBUG_MODE").is_some() {
+        game_state.players.insert("测试玩家", resource_island_server::Player::new());
+
+    }
     let state = Arc::new(resource_island_server::AppState::new(
         cfg,
         game_state
@@ -31,13 +34,11 @@ async fn main(){
         .route("/playerinfo", get(get_player_info_with_query))
         .route_layer(from_fn_with_state(state.clone(), routes::auth_middleware))
         .with_state(state.clone());
-    let cfg = state.cfg.lock();
+    let cfg = state.cfg.lock().await;
     let whole_address = format!("{}:{}", cfg.server.bind_host.clone(), cfg.server.bind_port.clone());
     drop(cfg);
     trace!("游戏相关线程开启中");
-    tokio::spawn(async move {
-        resource_island_server::game::game_main_loop(state);
-    });
+    tokio::spawn(resource_island_server::game::game_main_loop(state));
     trace!("正在创建监听器");
     let listener = tokio::net::TcpListener::bind(whole_address).await.unwrap();
     info!("正在开启Web路由");
