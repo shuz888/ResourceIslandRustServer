@@ -154,8 +154,11 @@ async fn handler_reader(state: Arc<AppState>, uuid: Uuid, mut reader: SplitStrea
                             };
                             let resp = {
                                 let game_state = state.game_state.read().await;
-                                let player = game_state.players.get(&requested_uuid).unwrap();
-                                PlayerInfoResponse::from(player)
+                                let player = game_state.players.get(&requested_uuid);
+                                if player.is_none() {
+                                    continue;
+                                }
+                                PlayerInfoResponse::from(&*player.unwrap())
                             };
                             let resp = ServerToPlayerMessage::PlayerInfoResponse {
                                 uuid: uuid.clone(),
