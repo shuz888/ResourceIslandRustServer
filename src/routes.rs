@@ -1,15 +1,17 @@
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
-use axum::extract::{Path, Query, Request, State, WebSocketUpgrade};
+use axum::extract::{Path, Request, State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::middleware::Next;
-use axum::response::{IntoResponse, Json, Response};
+use axum::response::{IntoResponse, Response};
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
-use resource_island_server::dtos::{GameStateResponse, PlayerInfoResponse};
-use resource_island_server::{AppState, Player};
+use resource_island_server::enums::{PlayerToServerMessage, ServerToPlayerMessage};
+use resource_island_server::structs::{AppState, Player};
+use resource_island_server::structs::{GameStateResponse, PlayerInfoResponse};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::trace;
+use tracing::{debug, error, info};
+use uuid::Uuid;
 
 fn parse_params(input: &str) -> HashMap<String, String> {
     let mut map = HashMap::new();
@@ -47,10 +49,14 @@ pub async fn auth_middleware(
             None
         }
     };
-    let token = { state.cfg.lock().await.server.token.clone() };
+    let (token, use_token) = {
+        let cfg = state.cfg.clone();
+        (cfg.server.token.clone(), cfg.server.use_token)
+    };
+    if token == "__set_token_here__" || !use_token {
+        return Ok(next.run(request).await);
+    }
     if let Some(provided_auth) = provided_auth {
-        trace!("Provided token: {}", provided_auth);
-        trace!("Expected token: {}", token);
         if provided_auth != token {
             return Err(StatusCode::FORBIDDEN);
         }
@@ -63,119 +69,155 @@ pub async fn auth_middleware(
 pub async fn root() -> &'static str {
     "You are all set!"
 }
-pub async fn get_game_state(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let state_guard = state.game_state.read().await;
-    (StatusCode::OK, Json(GameStateResponse::from(&*state_guard)))
-}
-pub async fn get_player_info_with_path(
-    State(state): State<Arc<AppState>>,
-    Path(player_name): Path<String>,
-) -> impl IntoResponse {
-    let cfg = state.cfg.lock();
-    drop(cfg);
-    let guard = state.game_state.read().await;
-    let player = match guard.players.get(player_name.as_str()) {
-        None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(PlayerInfoResponse::with_error()),
-            );
-        }
-        Some(p) => p,
-    };
-    (StatusCode::OK, Json(PlayerInfoResponse::from(player)))
-}
-pub async fn get_player_info_with_query(
-    State(state): State<Arc<AppState>>,
-    Query(args): Query<HashMap<String, String>>,
-) -> impl IntoResponse {
-    let player_name = match args.get("player") {
-        Some(name) => name,
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(PlayerInfoResponse::with_error()),
-            );
-        }
-    };
-    let guard = state.game_state.read().await;
-    let player = match guard.players.get(player_name.as_str()) {
-        None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(PlayerInfoResponse::with_error()),
-            );
-        }
-        Some(p) => p,
-    };
-    (StatusCode::OK, Json(PlayerInfoResponse::from(player)))
-}
 pub async fn ws_handler(
     State(state): State<Arc<AppState>>,
     Path(player_name): Path<String>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
     let player_obj = {
-        let cfg_temp = state.cfg.lock().await;
-        Player::with_cfg(&*cfg_temp)
+        let cfg_temp = state.cfg.clone();
+        Player::with_cfg(player_name.clone().leak(), &*cfg_temp)
     };
-    let register_player = {
+    let uuid = {
         let mut state_temp = state.game_state.write().await;
-        state_temp
-            .register_player(player_name.clone(), player_obj)
-            .await
+        state_temp.register_player(player_obj).await
     };
-    if let Err(_) = register_player.clone() {
-        (StatusCode::CONFLICT, "Player already exists").into_response()
-    } else {
-        ws.on_upgrade(move |mut socket| handler_on_upgrade(state, player_name, socket))
+    ws.on_upgrade(move |socket| handler_on_upgrade(state, uuid, socket))
+}
+async fn handler_on_upgrade(state: Arc<AppState>, uuid: Uuid, socket: WebSocket) {
+    let (mut writer, reader) = socket.split();
+    info!("有玩家加入，分配UUID：{:?}", uuid);
+    let msg = ServerToPlayerMessage::UuidNotice { uuid };
+    let send_result = writer
+        .send(Message::Text(Utf8Bytes::from(
+            serde_json::to_string(&msg).unwrap().as_str(),
+        )))
+        .await;
+    if send_result.is_err() {
+        return;
     }
+    let reader = tokio::spawn(handler_reader(state.clone(), uuid.clone(), reader));
+    let writer = tokio::spawn(handler_writer(state.clone(), uuid.clone(), writer));
+    tokio::select! {
+        _ = reader => {}
+        _ = writer => {}
+    }
+    state
+        .game_state
+        .write()
+        .await
+        .unregister_player(&uuid)
+        .await;
 }
-async fn handler_on_upgrade(state: Arc<AppState>, player_name: String, socket: WebSocket) {
-    let (writer, reader) = socket.split();
-    tokio::spawn(handler_reader(state.clone(), player_name.clone(), reader));
-    tokio::spawn(handler_writer(state, player_name, writer));
-}
-async fn handler_reader(
-    state: Arc<AppState>,
-    player_name: String,
-    mut reader: SplitStream<WebSocket>,
-) {
+async fn handler_reader(state: Arc<AppState>, uuid: Uuid, mut reader: SplitStream<WebSocket>) {
     while let Some(Ok(msg)) = reader.next().await {
+        debug!("接收到消息");
         match msg {
-            Message::Text(msg) => { /* TODO: 完成消息处理 */ }
-            Message::Close(_) => {
-                state
-                    .game_state
-                    .write()
-                    .await
-                    .unregister_player(player_name.clone())
-                    .await
-                    .unwrap_or(());
-                break;
+            Message::Text(msg) => {
+                let str = msg.to_string();
+                let msg = serde_json::from_str::<PlayerToServerMessage>(str.as_str());
+                match msg {
+                    Ok(msg) => {
+                        if let PlayerToServerMessage::RequestGameState {} = msg.clone() {
+                            let sender = {
+                                let game_state = state.game_state.read().await;
+                                game_state
+                                    .players
+                                    .get(&uuid.clone())
+                                    .unwrap()
+                                    .to_channel
+                                    .sender
+                                    .clone()
+                            };
+                            let resp = {
+                                let game_state = state.game_state.read().await;
+                                GameStateResponse::from(&*game_state)
+                            };
+                            let resp = ServerToPlayerMessage::GameStateResponse { state: resp };
+                            if sender.send(resp).await.is_err() {
+                                break;
+                            }
+                            continue;
+                        } else if let PlayerToServerMessage::RequestPlayerInfo {
+                            uuid: requested_uuid,
+                        } = msg.clone()
+                        {
+                            let sender = {
+                                let game_state = state.game_state.read().await;
+                                game_state
+                                    .players
+                                    .get(&uuid.clone())
+                                    .unwrap()
+                                    .to_channel
+                                    .sender
+                                    .clone()
+                            };
+                            let resp = {
+                                let game_state = state.game_state.read().await;
+                                let player = game_state.players.get(&requested_uuid).unwrap();
+                                PlayerInfoResponse::from(player)
+                            };
+                            let resp = ServerToPlayerMessage::PlayerInfoResponse {
+                                uuid: uuid.clone(),
+                                player: resp,
+                            };
+                            if sender.send(resp).await.is_err() {
+                                break;
+                            }
+                        }
+                        let sender = {
+                            let game_state = state.game_state.read().await;
+                            game_state
+                                .players
+                                .get(&uuid.clone())
+                                .unwrap()
+                                .from_channel
+                                .sender
+                                .clone()
+                        };
+                        let snd = sender.send(msg).await;
+                        if snd.is_err() {
+                            break;
+                        }
+                    }
+                    Err(obj) => {
+                        error!("json反序列化出错：{:?}", obj);
+                    }
+                }
             }
+            Message::Close(_) => break,
             _ => {}
         }
     }
 }
 async fn handler_writer(
     state: Arc<AppState>,
-    player_name: String,
+    uuid: Uuid,
     mut writer: SplitSink<WebSocket, Message>,
 ) {
     let receiver = {
         let game_state = state.game_state.read().await;
-        let player = game_state.players.get(player_name.as_str()).unwrap();
+        let player = game_state.players.get(&uuid).unwrap();
         player.to_channel.receiver.clone()
     };
 
-    while let Some(msg) = { receiver.lock().await.recv().await.clone() } {
-        let send_result = writer
-            .send(Message::Text(Utf8Bytes::from(
-                serde_json::to_string(&msg).unwrap().as_str(),
-            )))
-            .await;
-        if let Err(_) = send_result {
+    loop {
+        let msg = {
+            let mut rx = receiver.lock().await;
+            rx.recv().await
+        };
+
+        if let Some(msg) = msg {
+            debug!("准备发送消息");
+            let send_result = writer
+                .send(Message::Text(Utf8Bytes::from(
+                    serde_json::to_string(&msg).unwrap().as_str(),
+                )))
+                .await;
+            if send_result.is_err() {
+                break;
+            }
+        } else {
             break;
         }
     }
