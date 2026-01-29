@@ -1,6 +1,8 @@
 use crate::NoSuchFound;
-use serde::Serialize;
+use crate::structs::{GameStateResponse, PlayerInfoResponse};
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
+use uuid::Uuid;
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
 pub enum Items {
@@ -86,36 +88,52 @@ impl Into<&'static str> for &Building {
         }
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum PlayerToServerMessage {
-    Investment { action: InvestmentAction },
-    Bid { action: BidAction },
+    #[serde(rename = "request_game_state")]
+    RequestGameState {},
+    #[serde(rename = "request_player_info")]
+    RequestPlayerInfo { uuid: Uuid },
+    #[serde(rename = "send_investment")]
+    SendInvestment {},
 }
 #[derive(Clone, Serialize)]
 #[serde(tag = "type", content = "target")]
-#[serde(rename_all = "lowercase")]
-#[serde(rename_all_fields = "lowercase")]
 pub enum ServerToPlayerMessage {
-    #[serde(serialize_with = "serialize_stp_broadcast")]
+    #[serde(rename = "broadcast", serialize_with = "serialize_change")]
     Broadcast { raw: ServerBroadcastMessage },
+    #[serde(rename = "data_required")]
+    DataRequired { epoch: u32, phase: u32 },
+    #[serde(rename = "game_state_response")]
+    GameStateResponse { state: GameStateResponse },
+    #[serde(rename = "player_info")]
+    PlayerInfoResponse {
+        uuid: Uuid,
+        player: PlayerInfoResponse,
+    },
+    #[serde(rename = "uuid_notice")]
+    UuidNotice { uuid: Uuid },
 }
-fn serialize_stp_broadcast<S>(
-    raw: &ServerBroadcastMessage,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+fn serialize_change<T, S>(raw: &T, serializer: S) -> Result<S::Ok, S::Error>
 where
+    T: Serialize,
     S: serde::Serializer,
 {
     raw.serialize(serializer)
 }
 #[derive(Clone, Serialize)]
 #[serde(tag = "type", content = "target")]
-#[serde(rename_all = "lowercase")]
-#[serde(rename_all_fields = "lowercase")]
 pub enum ServerBroadcastMessage {
+    #[serde(rename = "phase_changed")]
     PhaseChanged { epoch: u32, phase: u32 },
-    DataRequired { epoch: u32, phase: u32 },
-    GameStart,
+    #[serde(rename = "game_start")]
+    GameStart {},
+    #[serde(rename = "heartbeat")]
+    HeartBeat {
+        state: GameStateResponse,
+        interval: u32,
+    },
 }
 #[derive(Clone)]
 pub enum InvestmentAction {

@@ -1,41 +1,34 @@
+use crate::enums::Items;
+use crate::structs::Player;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
-use serde::{Deserialize, Serialize};
-use tracing::{error, info, trace};
-use crate::enums::Items;
-use crate::Player;
 
-pub async fn load_configuration(file_name: &str) -> Result<GameCfg, anyhow::Error>{
-    info!("YAML configurations loading...");
-    if std::path::Path::new(file_name).exists() == false{
-        let file = File::create(file_name)?;
-        serde_yaml::to_writer(file, &GameCfg::with_defaults())?;
-    }
-    let file = File::open(file_name)?;
-    let cfg = serde_yaml::from_reader(file);
-    if let Err(e) = &cfg {
-        error!("Failed to load YAML configurations: {}", e);
-        return Ok(GameCfg::with_defaults());
-    }
-    trace!("loaded");
-    Ok(cfg?)
-}
-pub async fn save_configuration(file_name: &str, cfg: GameCfg) -> Result<(), anyhow::Error>{
-    let file = File::create(file_name)?;
-    serde_yaml::to_writer(file, &cfg)?;
-    Ok(())
-}
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GameCfg {
     pub server: ServerCfg,
     pub game_rules: GameRules,
 }
 impl GameCfg {
-    pub fn with_defaults() -> GameCfg {
+    fn with_defaults() -> GameCfg {
         GameCfg {
-            server: ServerCfg::with_defaults(),
-            game_rules: GameRules::with_defaults(),
+            server: Default::default(),
+            game_rules: Default::default(),
         }
+    }
+    pub fn load_from(file_name: String) -> anyhow::Result<Self> {
+        if std::path::Path::new(&file_name).exists() == false {
+            let file = File::create(&file_name)?;
+            serde_yaml::to_writer::<File, GameCfg>(file, &Default::default())?;
+        }
+        let file = File::open(&file_name)?;
+        let cfg = serde_yaml::from_reader(file);
+        Ok(cfg?)
+    }
+}
+impl Default for GameCfg {
+    fn default() -> Self {
+        Self::with_defaults()
     }
 }
 #[derive(Serialize, Deserialize, Debug)]
@@ -43,20 +36,27 @@ pub struct ServerCfg {
     pub player_numbers: u32,
     pub use_token: bool,
     pub token: String,
-    pub query_use_token: bool,
     pub bind_host: String,
     pub bind_port: u32,
+    pub seed: String,
+    pub heart_beat_interval: u32,
 }
 impl ServerCfg {
-    pub fn with_defaults() -> ServerCfg{
+    fn with_defaults() -> ServerCfg {
         ServerCfg {
             player_numbers: 4,
             use_token: false,
-            token: "set_the_token_here".into(),
-            query_use_token: false,
+            token: "__set_the_token_here__".into(),
             bind_host: "0.0.0.0".into(),
             bind_port: 8080,
+            seed: "__set_seed_here__".into(),
+            heart_beat_interval: 10,
         }
+    }
+}
+impl Default for ServerCfg {
+    fn default() -> Self {
+        Self::with_defaults()
     }
 }
 #[derive(Serialize, Deserialize, Debug)]
@@ -66,12 +66,17 @@ pub struct GameRules {
     pub investment: InvestmentCfg,
 }
 impl GameRules {
-    pub fn with_defaults() -> GameRules {
+    fn with_defaults() -> GameRules {
         GameRules {
-            prepare: PrepareCfg::with_defaults(),
-            resource_values_default: ResourceValuesDefault::with_defaults(),
-            investment: InvestmentCfg::with_defaults()
+            prepare: Default::default(),
+            resource_values_default: Default::default(),
+            investment: Default::default(),
         }
+    }
+}
+impl Default for GameRules {
+    fn default() -> Self {
+        Self::with_defaults()
     }
 }
 #[derive(Serialize, Deserialize, Debug)]
@@ -79,16 +84,21 @@ pub struct PrepareCfg {
     pub total_epochs: u32,
     pub draw_cards: u32,
     pub defaults_give_player: DefaultsGivePlayerCfg,
-    pub deck: DeckCfg
+    pub deck: DeckCfg,
 }
 impl PrepareCfg {
-    pub fn with_defaults() -> PrepareCfg {
+    fn with_defaults() -> PrepareCfg {
         PrepareCfg {
             total_epochs: 10,
             draw_cards: 10,
-            defaults_give_player: DefaultsGivePlayerCfg::with_defaults(),
-            deck: DeckCfg::with_defaults(),
+            defaults_give_player: Default::default(),
+            deck: Default::default(),
         }
+    }
+}
+impl Default for PrepareCfg {
+    fn default() -> Self {
+        Self::with_defaults()
     }
 }
 #[derive(Serialize, Deserialize, Debug)]
@@ -102,7 +112,7 @@ pub struct DefaultsGivePlayerCfg {
     pub iron: u32,
 }
 impl DefaultsGivePlayerCfg {
-    pub fn with_defaults() -> DefaultsGivePlayerCfg {
+    fn with_defaults() -> DefaultsGivePlayerCfg {
         DefaultsGivePlayerCfg {
             ap: 5,
             diamond: 0,
@@ -123,6 +133,11 @@ impl DefaultsGivePlayerCfg {
         player.resources.insert(Items::Food, self.food);
     }
 }
+impl Default for DefaultsGivePlayerCfg {
+    fn default() -> Self {
+        Self::with_defaults()
+    }
+}
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DeckCfg {
     pub diamond: u32,
@@ -133,7 +148,7 @@ pub struct DeckCfg {
     pub iron: u32,
 }
 impl DeckCfg {
-    pub fn with_defaults() -> DeckCfg {
+    fn with_defaults() -> DeckCfg {
         DeckCfg {
             diamond: 50,
             gold: 80,
@@ -156,6 +171,11 @@ impl Into<HashMap<Items, u32>> for &DeckCfg {
         res
     }
 }
+impl Default for DeckCfg {
+    fn default() -> Self {
+        Self::with_defaults()
+    }
+}
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResourceValuesDefault {
     pub diamond: u32,
@@ -166,7 +186,7 @@ pub struct ResourceValuesDefault {
     pub iron: u32,
 }
 impl ResourceValuesDefault {
-    pub fn with_defaults() -> ResourceValuesDefault {
+    fn with_defaults() -> ResourceValuesDefault {
         ResourceValuesDefault {
             diamond: 8,
             gold: 6,
@@ -189,17 +209,27 @@ impl Into<HashMap<Items, u32>> for &ResourceValuesDefault {
         res
     }
 }
+impl Default for ResourceValuesDefault {
+    fn default() -> Self {
+        Self::with_defaults()
+    }
+}
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InvestmentCfg {
     pub enable: bool,
     pub needs_ap: InvestmentApCosts,
 }
 impl InvestmentCfg {
-    pub fn with_defaults() -> InvestmentCfg {
+    fn with_defaults() -> InvestmentCfg {
         InvestmentCfg {
             enable: true,
-            needs_ap: InvestmentApCosts::with_defaults(),
+            needs_ap: Default::default(),
         }
+    }
+}
+impl Default for InvestmentCfg {
+    fn default() -> Self {
+        Self::with_defaults()
     }
 }
 #[derive(Serialize, Deserialize, Debug)]
@@ -223,5 +253,10 @@ impl InvestmentApCosts {
             mine: 0,
             pick: 0,
         }
+    }
+}
+impl Default for InvestmentApCosts {
+    fn default() -> Self {
+        Self::with_defaults()
     }
 }
