@@ -1,17 +1,16 @@
-use crate::routes::{root, ws_handler};
 use axum::middleware::from_fn_with_state;
 use axum::routing::{any, get};
 use rand_chacha::ChaCha20Rng;
 use rand_chacha::rand_core::SeedableRng;
 use rand_seeder::SipHasher;
 use rand_seeder::rand_core::RngCore;
-use resource_island_server::structs::AppState;
-use resource_island_server::structs::GameState;
+use resource_island_server::config::GameCfg;
+use resource_island_server::routes;
+use resource_island_server::routes::{root, ws_handler};
+use resource_island_server::structs::{AppState, GameState};
 use std::sync::Arc;
 use tracing::{debug, error, info, trace};
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
-
-mod routes;
 
 #[tokio::main]
 async fn main() {
@@ -23,7 +22,7 @@ async fn main() {
     info!("游戏正加载中，请稍后");
     // 加载配置
     trace!("加载配置");
-    let cfg = resource_island_server::config::GameCfg::load_from("config.yaml".into());
+    let cfg = GameCfg::load_from("config.yaml".into());
     if cfg.is_err() {
         error!("加载配置失败，正在使用默认配置");
     }
