@@ -93,6 +93,7 @@ pub mod game {
     };
     use crate::structs::{AppState, GameStateResponse};
     use crate::{discount_recipe, parse_recipe, verify_recipe};
+    use rand::Rng;
     use std::collections::{HashMap, HashSet};
     use std::sync::Arc;
     use std::time::Duration;
@@ -147,42 +148,229 @@ pub mod game {
             }
         });
         loop {
-            {
-                if app_state.game_state.read().await.epoch > total_epochs {
-                    return;
+            let state = app_state.game_state.read().await;
+            if state.epoch > total_epochs {
+                return;
+            }
+            let (cur_phase, cur_epoch) = { (state.phase, state.epoch) };
+            drop(state);
+            let mut state = app_state.game_state.write().await;
+            let items_per_ap = app_state.cfg.game_rules.investment.explore.items_per_ap;
+            let mut draw_cards = 0u32;
+            if state.market.is_empty() {
+                for pl in state.players.values_mut() {
+                    if pl.action_points > 1 {
+                        pl.action_points = pl.action_points - 1;
+                        draw_cards += items_per_ap;
+                    }
                 }
             }
-            let (cur_phase, cur_epoch) = {
-                let guard = app_state.game_state.read().await;
-                (guard.phase, guard.epoch)
-            };
+            let mut cards: Vec<_> = state.current_deck.drain(..draw_cards as usize).collect();
+            state.market.append(&mut cards);
+            drop(cards);
+            drop(state);
             if cur_phase == 1 {
                 if !app_state.cfg.game_rules.investment.enable {
                     let mut game_state = app_state.game_state.write().await;
                     game_state.increase_phase().await;
                     continue;
                 }
-                {
-                    let game_state = app_state.game_state.read().await;
-                    game_state
-                        .broadcast(ServerBroadcastMessage::PhaseChanged {
-                            phase: cur_phase,
-                            epoch: cur_epoch,
-                        })
-                        .await;
-                    for pl in game_state.players.keys() {
-                        game_state
-                            .send_to(
-                                pl,
-                                ServerToPlayerMessage::DataRequired {
-                                    phase: cur_phase,
-                                    epoch: cur_epoch,
-                                },
-                            )
-                            .await;
+                let game_state = app_state.game_state.read().await;
+                game_state
+                    .broadcast(ServerBroadcastMessage::PhaseChanged {
+                        phase: cur_phase,
+                        epoch: cur_epoch,
+                    })
+                    .await;
+                drop(game_state);
+                let mut game_state = app_state.game_state.write().await;
+                let mut current_deck = game_state.current_deck.clone();
+                for pl in game_state.players.values_mut() {
+                    for building in pl.buildings.iter() {
+                        match building {
+                            Building::Farm => {
+                                if app_state
+                                    .cfg
+                                    .game_rules
+                                    .investment
+                                    .build
+                                    .building_cfg
+                                    .farm
+                                    .enable
+                                {
+                                    continue;
+                                }
+                                let pl_res_food_mut = pl.resources.get_mut(&Items::Food).unwrap();
+                                *pl_res_food_mut += app_state
+                                    .cfg
+                                    .game_rules
+                                    .investment
+                                    .build
+                                    .building_cfg
+                                    .farm
+                                    .auto_give_food;
+                                pl.to_channel
+                                    .sender
+                                    .clone()
+                                    .send(ServerToPlayerMessage::BuildingWorked {
+                                        building: Building::Farm,
+                                    })
+                                    .await
+                                    .unwrap();
+                            }
+                            Building::SuperFarm => {
+                                if app_state
+                                    .cfg
+                                    .game_rules
+                                    .investment
+                                    .build
+                                    .building_cfg
+                                    .super_farm
+                                    .enable
+                                {
+                                    continue;
+                                }
+                                let pl_res_food_mut = pl.resources.get_mut(&Items::Food).unwrap();
+                                *pl_res_food_mut += app_state
+                                    .cfg
+                                    .game_rules
+                                    .investment
+                                    .build
+                                    .building_cfg
+                                    .super_farm
+                                    .auto_give_food;
+                                pl.to_channel
+                                    .sender
+                                    .clone()
+                                    .send(ServerToPlayerMessage::BuildingWorked {
+                                        building: Building::SuperFarm,
+                                    })
+                                    .await
+                                    .unwrap();
+                            }
+                            Building::Miner => {
+                                if app_state
+                                    .cfg
+                                    .game_rules
+                                    .investment
+                                    .build
+                                    .building_cfg
+                                    .miner
+                                    .enable
+                                {
+                                    continue;
+                                }
+                                let mut give_ore = app_state
+                                    .cfg
+                                    .game_rules
+                                    .investment
+                                    .build
+                                    .building_cfg
+                                    .miner
+                                    .auto_give_ore;
+                                while give_ore > 0 {
+                                    give_ore -= 1;
+                                    let ore_index = current_deck
+                                        .iter()
+                                        .position(|x| match x {
+                                            Items::Gold => true,
+                                            Items::Diamond => true,
+                                            Items::Ore => true,
+                                            Items::Iron => true,
+                                            _ => false,
+                                        })
+                                        .unwrap();
+                                    let ore = current_deck.remove(ore_index);
+                                    let now_ore_count = pl.resources.get(&ore).unwrap();
+                                    pl.resources.insert(ore, now_ore_count + 1);
+                                }
+                            }
+                            Building::SuperMiner => {
+                                if app_state
+                                    .cfg
+                                    .game_rules
+                                    .investment
+                                    .build
+                                    .building_cfg
+                                    .super_miner
+                                    .enable
+                                {
+                                    continue;
+                                }
+                                let mut give_ore = app_state
+                                    .cfg
+                                    .game_rules
+                                    .investment
+                                    .build
+                                    .building_cfg
+                                    .super_miner
+                                    .auto_give_ore;
+                                while give_ore > 0 {
+                                    give_ore -= 1;
+                                    let ore_index = current_deck
+                                        .iter()
+                                        .position(|x| match x {
+                                            Items::Gold => true,
+                                            Items::Diamond => true,
+                                            Items::Ore => true,
+                                            Items::Iron => true,
+                                            _ => false,
+                                        })
+                                        .unwrap();
+                                    let ore = current_deck.remove(ore_index);
+                                    let now_ore_count = pl.resources.get(&ore).unwrap();
+                                    pl.resources.insert(ore, now_ore_count + 1);
+                                }
+                            }
+                            Building::Lumber => {
+                                if app_state
+                                    .cfg
+                                    .game_rules
+                                    .investment
+                                    .build
+                                    .building_cfg
+                                    .lumber
+                                    .enable
+                                {
+                                    continue;
+                                }
+                                let mut give_wood = app_state
+                                    .cfg
+                                    .game_rules
+                                    .investment
+                                    .build
+                                    .building_cfg
+                                    .lumber
+                                    .auto_give_wood;
+                                while give_wood > 0 {
+                                    give_wood -= 1;
+                                    let ore_index =
+                                        current_deck.iter().position(|x| x == &Items::Wood);
+                                    if ore_index == None {
+                                        break;
+                                    }
+                                    let ore = current_deck.remove(ore_index.unwrap());
+                                    let now_ore_count = pl.resources.get(&ore).unwrap();
+                                    pl.resources.insert(ore, now_ore_count + 1);
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                 }
-                /* TODO: 添加玩家机器处理 */
+                game_state.current_deck = current_deck;
+                let game_state = game_state.downgrade();
+                for pl in game_state.players.keys() {
+                    game_state
+                        .send_to(
+                            pl,
+                            ServerToPlayerMessage::DataRequired {
+                                phase: cur_phase,
+                                epoch: cur_epoch,
+                            },
+                        )
+                        .await;
+                }
                 let game_state = app_state.game_state.read().await;
                 let mut investment_unfinished: HashSet<Uuid> =
                     game_state.players.keys().map(|pl| pl.clone()).collect();
@@ -191,7 +379,7 @@ pub mod game {
                     .keys()
                     .map(|pl| {
                         let actions: Vec<&'static str> =
-                            vec!["exchange", "explore", "build", "mine", "ore", "storemoney"];
+                            vec!["exchange", "explore", "build", "crush", "storemoney"];
                         let action_map: HashMap<&'static str, u32> =
                             actions.into_iter().map(|s| (s, 0)).collect();
                         (pl.clone(), action_map)
@@ -283,11 +471,20 @@ pub mod game {
                                             .insert("explore", now_count + 1);
                                     }
                                     if state.players.get(&uuid).unwrap().action_points < 1 {
-                                        state.send_to(&uuid, ServerToPlayerMessage::InvestmentResult {
-                                                action,
-                                                error: true,
-                                                reason: Some(InvestmentError::ActionPointsDoesNotEnough { need: 1 })
-                                            }).await;
+                                        state
+                                            .send_to(
+                                                &uuid,
+                                                ServerToPlayerMessage::InvestmentResult {
+                                                    action,
+                                                    error: true,
+                                                    reason: Some(
+                                                        InvestmentError::NoEnoughActionPoints {
+                                                            need: 1,
+                                                        },
+                                                    ),
+                                                },
+                                            )
+                                            .await;
                                         continue;
                                     }
                                     drop(state);
@@ -363,11 +560,9 @@ pub mod game {
                                                 ServerToPlayerMessage::InvestmentResult {
                                                     action,
                                                     error: true,
-                                                    reason: Some(
-                                                        InvestmentError::FoodDoesNotEnough {
-                                                            need: 1,
-                                                        },
-                                                    ),
+                                                    reason: Some(InvestmentError::NoEnoughFood {
+                                                        need: 1,
+                                                    }),
                                                 },
                                             )
                                             .await;
@@ -847,15 +1042,185 @@ pub mod game {
                                                 )
                                                 .await;
                                         }
+                                        Building::Lumber {} => {
+                                            let state = app_state.game_state.read().await;
+                                            if !app_state
+                                                .cfg
+                                                .game_rules
+                                                .investment
+                                                .build
+                                                .building_cfg
+                                                .lumber
+                                                .enable
+                                            {
+                                                state.send_to(&uuid, ServerToPlayerMessage::InvestmentResult {
+                                                    action,
+                                                    error: true,
+                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {}),
+                                                }).await;
+                                                continue;
+                                            }
+                                            let recipe = app_state
+                                                .cfg
+                                                .game_rules
+                                                .investment
+                                                .build
+                                                .building_cfg
+                                                .lumber
+                                                .recipe
+                                                .clone();
+                                            let recipe = recipe
+                                                .into_iter()
+                                                .map(|x| x.leak() as &'static str)
+                                                .collect::<Vec<&'static str>>();
+                                            let recipe = parse_recipe(recipe);
+                                            drop(state);
+                                            let mut state = app_state.game_state.write().await;
+                                            let player = state.players.get_mut(&uuid).unwrap();
+                                            if !verify_recipe(&recipe.0, &recipe.1, player) {
+                                                state.send_to(&uuid, ServerToPlayerMessage::InvestmentResult {
+                                                    action,
+                                                    error: true,
+                                                    reason: Some(InvestmentError::NoEnoughMaterials {
+                                                        need_items: recipe.0.clone(),
+                                                        need_buildings: recipe.1.clone(),
+                                                    }),
+                                                }).await;
+                                                continue;
+                                            }
+                                            discount_recipe(&recipe.0, &recipe.1, player).unwrap();
+                                            player.buildings.push(building.clone());
+                                            let state = state.downgrade();
+                                            state
+                                                .send_to(
+                                                    &uuid,
+                                                    ServerToPlayerMessage::InvestmentResult {
+                                                        action,
+                                                        error: false,
+                                                        reason: None,
+                                                    },
+                                                )
+                                                .await;
+                                        }
                                     }
                                 }
-                                InvestmentAction::Ore { .. } => {
-                                    todo!()
+                                InvestmentAction::CrushOre {} => {
+                                    let mut state = app_state.game_state.write().await;
+                                    if !app_state.cfg.game_rules.investment.crush.enable {
+                                        state
+                                            .send_to(
+                                                &uuid,
+                                                ServerToPlayerMessage::InvestmentResult {
+                                                    action,
+                                                    error: true,
+                                                    reason: Some(
+                                                        InvestmentError::ActionIsNotEnabled {},
+                                                    ),
+                                                },
+                                            )
+                                            .await;
+                                        continue;
+                                    }
+                                    let limits =
+                                        app_state.cfg.game_rules.investment.crush.crush_limits;
+                                    if counts.get(&uuid).unwrap().get("crush").unwrap() > &limits {
+                                        state
+                                            .send_to(
+                                                &uuid,
+                                                ServerToPlayerMessage::InvestmentResult {
+                                                    action,
+                                                    error: true,
+                                                    reason: Some(InvestmentError::LimitsExceeded {
+                                                        limit: limits,
+                                                    }),
+                                                },
+                                            )
+                                            .await;
+                                        continue;
+                                    }
+                                    let player = state.players.get_mut(&uuid).unwrap();
+                                    let needs_ap =
+                                        app_state.cfg.game_rules.investment.crush.needs_ap;
+                                    if player.action_points < needs_ap {
+                                        state
+                                            .send_to(
+                                                &uuid,
+                                                ServerToPlayerMessage::InvestmentResult {
+                                                    action,
+                                                    error: true,
+                                                    reason: Some(
+                                                        InvestmentError::NoEnoughActionPoints {
+                                                            need: needs_ap,
+                                                        },
+                                                    ),
+                                                },
+                                            )
+                                            .await;
+                                        continue;
+                                    }
+                                    player.action_points -= needs_ap;
+                                    let ore_count = player.resources.get(&Items::Ore).unwrap();
+                                    if ore_count < &1 {
+                                        state
+                                            .send_to(
+                                                &uuid,
+                                                ServerToPlayerMessage::InvestmentResult {
+                                                    action,
+                                                    error: true,
+                                                    reason: Some(InvestmentError::NoEnoughOre {
+                                                        need: 1,
+                                                    }),
+                                                },
+                                            )
+                                            .await;
+                                        continue;
+                                    }
+                                    player.resources.insert(Items::Ore, ore_count - 1);
+                                    let items: Vec<Items> = app_state
+                                        .cfg
+                                        .game_rules
+                                        .investment
+                                        .crush
+                                        .probabilities
+                                        .keys()
+                                        .cloned()
+                                        .collect();
+                                    let probs: Vec<f32> = app_state
+                                        .cfg
+                                        .game_rules
+                                        .investment
+                                        .crush
+                                        .probabilities
+                                        .values()
+                                        .cloned()
+                                        .collect();
+                                    let mut count =
+                                        app_state.cfg.game_rules.investment.crush.get_ores;
+                                    let mut rng = app_state.rng.clone();
+                                    while count > 0 {
+                                        let random_val: f32 = rng.random();
+                                        let mut cumulative = 0.0;
+                                        for (i, &prob) in probs.iter().enumerate() {
+                                            cumulative += prob;
+                                            if random_val <= cumulative {
+                                                let drawed_item = items[i];
+                                                player.resources.insert(drawed_item, 1);
+                                            }
+                                        }
+                                        count -= 1;
+                                    }
+                                    state
+                                        .send_to(
+                                            &uuid,
+                                            ServerToPlayerMessage::InvestmentResult {
+                                                action,
+                                                error: false,
+                                                reason: None,
+                                            },
+                                        )
+                                        .await;
                                 }
-                                InvestmentAction::Mine { .. } => {
-                                    todo!()
-                                }
-                                InvestmentAction::StoreMoney { .. } => {
+                                InvestmentAction::StoreMoney { item, count } => {
                                     todo!()
                                 }
                                 InvestmentAction::End {} => {
@@ -1085,6 +1450,8 @@ pub mod config {
         pub explore: ExploreSettings,
         pub exchange: ExchangeSettings,
         pub build: BuildCfg,
+        pub crush: CrushOreCfg,
+        pub store: StoreMoneyCfg,
     }
     impl InvestmentCfg {
         fn with_defaults() -> InvestmentCfg {
@@ -1093,6 +1460,8 @@ pub mod config {
                 explore: Default::default(),
                 exchange: Default::default(),
                 build: Default::default(),
+                crush: Default::default(),
+                store: Default::default(),
             }
         }
     }
@@ -1116,6 +1485,47 @@ pub mod config {
     }
     impl_default_with!(BuildCfg);
     #[derive(Serialize, Deserialize, Debug)]
+    pub struct StoreMoneyCfg {
+        pub enable: bool,
+        pub needs_ap: u32,
+    }
+    impl StoreMoneyCfg {
+        fn with_defaults() -> Self {
+            Self {
+                enable: true,
+                needs_ap: 3,
+            }
+        }
+    }
+    impl_default_with!(StoreMoneyCfg);
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct CrushOreCfg {
+        pub enable: bool,
+        pub needs_ap: u32,
+        pub get_ores: u32,
+        pub probabilities: HashMap<Items, f32>,
+        pub crush_limits: u32,
+    }
+    impl CrushOreCfg {
+        fn with_defaults() -> Self {
+            let mut prob = HashMap::new();
+            prob.insert(Items::Diamond, 0.1);
+            prob.insert(Items::Gold, 0.3);
+            prob.insert(Items::Iron, 0.4);
+            prob.insert(Items::Ore, 0.0);
+            prob.insert(Items::Wood, 0.0);
+            prob.insert(Items::Food, 0.0);
+            Self {
+                enable: true,
+                needs_ap: 1,
+                get_ores: 1,
+                probabilities: prob,
+                crush_limits: 0,
+            }
+        }
+    }
+    impl_default_with!(CrushOreCfg);
+    #[derive(Serialize, Deserialize, Debug)]
     pub struct BuildingCfg {
         pub resource_points_per_building: u32,
         pub farm: FarmCfg,
@@ -1125,6 +1535,7 @@ pub mod config {
         pub bank: BankCfg,
         pub cannon: CannonCfg,
         pub pickaxe: PickaxeCfg,
+        pub lumber: LumberCfg,
     }
     impl BuildingCfg {
         fn with_defaults() -> Self {
@@ -1137,6 +1548,7 @@ pub mod config {
                 bank: Default::default(),
                 cannon: Default::default(),
                 pickaxe: Default::default(),
+                lumber: Default::default(),
             }
         }
     }
@@ -1190,6 +1602,23 @@ pub mod config {
         }
     }
     impl_default_with!(FarmCfg);
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct LumberCfg {
+        pub enable: bool,
+        pub auto_give_wood: u32,
+        pub recipe: Vec<String>,
+    }
+    impl LumberCfg {
+        fn with_defaults() -> Self {
+            let recipe_vec = vec!["item: Iron*3".to_string()];
+            Self {
+                enable: true,
+                auto_give_wood: 3,
+                recipe: recipe_vec,
+            }
+        }
+    }
+    impl_default_with!(LumberCfg);
     #[derive(Serialize, Deserialize, Debug)]
     pub struct SuperFarmCfg {
         pub enable: bool,
@@ -1355,22 +1784,20 @@ pub mod enums {
         Bank,
         Cannon,
         Pickaxe,
+        Lumber,
     }
     impl TryFrom<&'static str> for Building {
         type Error = String;
 
         fn try_from(value: &'static str) -> Result<Self, Self::Error> {
-            if value.to_lowercase() == "farm" {
+            let value = value.to_lowercase();
+            if value == "farm" {
                 Ok(Self::Farm)
-            } else if value.to_lowercase().contains("farm")
-                && value.to_lowercase().contains("super")
-            {
+            } else if value.contains("farm") && value.contains("super") {
                 Ok(Self::SuperFarm)
             } else if value == "miner" {
                 Ok(Self::Miner)
-            } else if value.to_lowercase().contains("miner")
-                && value.to_lowercase().contains("super")
-            {
+            } else if value.contains("miner") && value.contains("super") {
                 Ok(Self::SuperMiner)
             } else if value == "bank" {
                 Ok(Self::Bank)
@@ -1378,6 +1805,8 @@ pub mod enums {
                 Ok(Self::Cannon)
             } else if value == "pickaxe" {
                 Ok(Self::Pickaxe)
+            } else if value == "lumber" {
+                Ok(Self::Lumber)
             } else {
                 Err("no such building".into())
             }
@@ -1393,6 +1822,7 @@ pub mod enums {
                 Building::Bank => "bank",
                 Building::Cannon => "cannon",
                 Building::Pickaxe => "pickaxe",
+                Building::Lumber => "lumber",
             }
         }
     }
@@ -1427,14 +1857,17 @@ pub mod enums {
             #[serde(skip_serializing_if = "Option::is_none")]
             reason: Option<InvestmentError>,
         },
+        BuildingWorked {
+            building: Building,
+        },
     }
     #[derive(Serialize, Clone)]
     #[serde(tag = "type", content = "target", rename_all = "snake_case")]
     pub enum InvestmentError {
-        ActionPointsDoesNotEnough {
+        NoEnoughActionPoints {
             need: u32,
         },
-        FoodDoesNotEnough {
+        NoEnoughFood {
             need: u32,
         },
         DontHaveMinerOrSuperMiner {},
@@ -1446,6 +1879,9 @@ pub mod enums {
         NoEnoughMaterials {
             need_items: HashMap<Items, u32>,
             need_buildings: HashMap<Building, u32>,
+        },
+        NoEnoughOre {
+            need: u32,
         },
     }
     #[derive(Clone, Serialize)]
@@ -1468,9 +1904,8 @@ pub mod enums {
         Explore {},
         Exchange {},
         Build { building: Building },
-        Ore {},
-        Mine {},
-        StoreMoney { count: u32 },
+        CrushOre {},
+        StoreMoney { item: Items, count: u32 },
         End {},
     }
     #[derive(Clone)]
