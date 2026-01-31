@@ -88,7 +88,7 @@ pub fn discount_recipe(
 }
 pub mod game {
     use crate::enums::{
-        BiddingError, Building, ContendingAction, ContendingError, InvestmentAction,
+        BiddingError, Building, ContendingAction, ContendingError, Events, InvestmentAction,
         InvestmentError, Items, PlayerToServerMessage, ServerBroadcastMessage,
         ServerToPlayerMessage,
     };
@@ -1371,10 +1371,12 @@ pub mod game {
                     }
                 }
             } else if cur_phase == 2 {
-                let state = app_state.game_state.read().await;
                 if !app_state.cfg.game_rules.bidding.enable {
+                    let mut state = app_state.game_state.write().await;
+                    state.increase_phase().await;
                     continue;
                 }
+                let state = app_state.game_state.read().await;
                 state
                     .broadcast(ServerBroadcastMessage::PhaseChanged {
                         epoch: cur_epoch,
@@ -1658,6 +1660,8 @@ pub mod game {
                     }
                 }
                 if !app_state.cfg.game_rules.value_changing.enable {
+                    let mut state = app_state.game_state.write().await;
+                    state.increase_phase().await;
                     continue;
                 }
                 let (mark_up_when, discount_when, mark_up, discount) = (
@@ -1694,6 +1698,152 @@ pub mod game {
                     }
                 }
             } else if cur_phase == 4 {
+                let mut state = app_state.game_state.write().await;
+                if !app_state.cfg.game_rules.events.enable {
+                    continue;
+                }
+                state
+                    .broadcast(ServerBroadcastMessage::PhaseChanged {
+                        epoch: cur_epoch,
+                        phase: cur_phase,
+                    })
+                    .await;
+                let mut events_will_be_chosen = vec![];
+                if app_state.cfg.game_rules.events.pirate_attack.enable {
+                    events_will_be_chosen.push(Events::PirateAttack);
+                }
+                if app_state.cfg.game_rules.events.famine.enable {
+                    events_will_be_chosen.push(Events::Famine);
+                }
+                if app_state.cfg.game_rules.events.ap_bonus.enable {
+                    events_will_be_chosen.push(Events::ApBonus);
+                }
+                if app_state.cfg.game_rules.events.crop_bonus.enable {
+                    events_will_be_chosen.push(Events::CropBonus);
+                }
+                let random_number = app_state
+                    .rng
+                    .clone()
+                    .random_range(0..events_will_be_chosen.len());
+                let event_chosen = events_will_be_chosen[random_number].clone();
+                drop(events_will_be_chosen);
+                state
+                    .broadcast(ServerBroadcastMessage::EventChosen {
+                        event: event_chosen.clone(),
+                    })
+                    .await;
+                match event_chosen {
+                    Events::PirateAttack => {
+                        for pl in state.players.values_mut() {
+                            if pl
+                                .buildings
+                                .iter()
+                                .find(|x| match x {
+                                    Building::Cannon => true,
+                                    _ => false,
+                                })
+                                .is_some()
+                            {
+                                pl.to_channel
+                                    .sender
+                                    .send(ServerToPlayerMessage::BuildingWorked {
+                                        building: Building::Cannon,
+                                    })
+                                    .await
+                                    .unwrap();
+                                continue;
+                            }
+                            let need_gold = app_state.cfg.game_rules.events.pirate_attack.need_gold;
+                            let now_gold = pl.resources.get_mut(&Items::Gold).unwrap();
+                            if *now_gold > need_gold {
+                                *now_gold -= need_gold;
+                            } else {
+                                pl.buildings = vec![];
+                            }
+                        }
+                    }
+                    Events::CropBonus => {
+                        for pl in state.players.values_mut() {
+                            let building = pl.buildings.iter().find(|x| match x {
+                                Building::Farm => true,
+                                Building::SuperFarm => true,
+                                _ => false,
+                            });
+                            if building.is_some() {
+                                let building = *building.unwrap();
+                                pl.to_channel
+                                    .sender
+                                    .send(ServerToPlayerMessage::BuildingWorked { building })
+                                    .await
+                                    .unwrap();
+                                let now_crop = match building {
+                                    Building::Farm => {
+                                        app_state
+                                            .cfg
+                                            .game_rules
+                                            .investment
+                                            .build
+                                            .building_cfg
+                                            .farm
+                                            .auto_give_food
+                                    }
+                                    Building::SuperFarm => {
+                                        app_state
+                                            .cfg
+                                            .game_rules
+                                            .investment
+                                            .build
+                                            .building_cfg
+                                            .super_farm
+                                            .auto_give_food
+                                    }
+                                    _ => {
+                                        unreachable!()
+                                    }
+                                };
+                                let bonus = app_state.cfg.game_rules.events.crop_bonus.bonus;
+                                let give_crop = (now_crop as f32 * bonus) as u32;
+                                *pl.resources.get_mut(&Items::Food).unwrap() += give_crop;
+                                continue;
+                            }
+                        }
+                    }
+                    Events::ApBonus => {
+                        for pl in state.players.values_mut() {
+                            let now_ap = pl.action_points;
+                            let bonus = app_state.cfg.game_rules.events.crop_bonus.bonus;
+                            let give_ap = (now_ap as f32 * bonus) as u32;
+                            pl.action_points += give_ap;
+                            continue;
+                        }
+                    }
+                    Events::Famine => {
+                        for pl in state.players.values_mut() {
+                            let building = pl.buildings.iter().find(|x| match x {
+                                Building::Farm => true,
+                                Building::SuperFarm => true,
+                                _ => false,
+                            });
+                            if building.is_some() {
+                                let building = *building.unwrap();
+                                pl.to_channel
+                                    .sender
+                                    .send(ServerToPlayerMessage::BuildingWorked { building })
+                                    .await
+                                    .unwrap();
+                                continue;
+                            }
+                            let need_food = app_state.cfg.game_rules.events.famine.need_food;
+                            let now_food = pl.resources.get_mut(&Items::Food).unwrap();
+                            if *now_food > need_food {
+                                *now_food -= need_food;
+                            } else {
+                                pl.action_points = 0;
+                                *now_food = 0;
+                            }
+                        }
+                    }
+                }
             }
             let mut game_state = app_state.game_state.write().await;
             game_state.increase_phase().await;
@@ -1772,6 +1922,7 @@ pub mod config {
         pub investment: InvestmentCfg,
         pub bidding: BiddingCfg,
         pub value_changing: ValueChangingCfg,
+        pub events: EventsCfg,
     }
     impl GameRules {
         fn with_defaults() -> GameRules {
@@ -1781,6 +1932,7 @@ pub mod config {
                 investment: Default::default(),
                 bidding: Default::default(),
                 value_changing: Default::default(),
+                events: Default::default(),
             }
         }
     }
@@ -1803,6 +1955,82 @@ pub mod config {
         }
     }
     impl_default_with!(BiddingCfg);
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct EventsCfg {
+        pub enable: bool,
+        pub pirate_attack: PirateAttackCfg,
+        pub famine: FamineCfg,
+        pub crop_bonus: CropBonusCfg,
+        pub ap_bonus: ApBonusCfg,
+    }
+    impl EventsCfg {
+        fn with_defaults() -> Self {
+            Self {
+                enable: true,
+                pirate_attack: Default::default(),
+                famine: Default::default(),
+                crop_bonus: Default::default(),
+                ap_bonus: Default::default(),
+            }
+        }
+    }
+    impl_default_with!(EventsCfg);
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct ApBonusCfg {
+        pub enable: bool,
+        pub bonus: f32,
+    }
+    impl ApBonusCfg {
+        fn with_defaults() -> Self {
+            Self {
+                enable: true,
+                bonus: 2.0,
+            }
+        }
+    }
+    impl_default_with!(ApBonusCfg);
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct FamineCfg {
+        pub enable: bool,
+        pub need_food: u32,
+    }
+    impl FamineCfg {
+        fn with_defaults() -> Self {
+            Self {
+                enable: true,
+                need_food: 3,
+            }
+        }
+    }
+    impl_default_with!(FamineCfg);
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct CropBonusCfg {
+        pub enable: bool,
+        pub bonus: f32,
+    }
+    impl CropBonusCfg {
+        fn with_defaults() -> Self {
+            Self {
+                enable: true,
+                bonus: 1.0,
+            }
+        }
+    }
+    impl_default_with!(CropBonusCfg);
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct PirateAttackCfg {
+        pub enable: bool,
+        pub need_gold: u32,
+    }
+    impl PirateAttackCfg {
+        fn with_defaults() -> Self {
+            Self {
+                enable: true,
+                need_gold: 3,
+            }
+        }
+    }
+    impl_default_with!(PirateAttackCfg);
     #[derive(Serialize, Deserialize, Debug)]
     pub struct ValueChangingCfg {
         pub enable: bool,
@@ -2326,6 +2554,14 @@ pub mod enums {
             }
         }
     }
+    #[derive(Clone, Serialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum Events {
+        PirateAttack,
+        CropBonus,
+        ApBonus,
+        Famine,
+    }
     #[derive(Clone, Deserialize)]
     #[serde(tag = "type", content = "data", rename_all = "snake_case")]
     pub enum PlayerToServerMessage {
@@ -2443,6 +2679,9 @@ pub mod enums {
         ValueChanged {
             item: Items,
             now: u32,
+        },
+        EventChosen {
+            event: Events,
         },
     }
     #[derive(Serialize, Deserialize, Clone)]
