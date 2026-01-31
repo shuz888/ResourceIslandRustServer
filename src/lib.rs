@@ -379,7 +379,7 @@ pub mod game {
                     .keys()
                     .map(|pl| {
                         let actions: Vec<&'static str> =
-                            vec!["exchange", "explore", "build", "crush", "storemoney"];
+                            vec!["exchange", "explore", "build", "crush", "store"];
                         let action_map: HashMap<&'static str, u32> =
                             actions.into_iter().map(|s| (s, 0)).collect();
                         (pl.clone(), action_map)
@@ -1221,10 +1221,118 @@ pub mod game {
                                         .await;
                                 }
                                 InvestmentAction::StoreMoney { item, count } => {
-                                    todo!()
+                                    let state = app_state.game_state.read().await;
+                                    if !app_state.cfg.game_rules.investment.store.enable {
+                                        state
+                                            .send_to(
+                                                &uuid,
+                                                ServerToPlayerMessage::InvestmentResult {
+                                                    action,
+                                                    error: true,
+                                                    reason: Some(
+                                                        InvestmentError::ActionIsNotEnabled {},
+                                                    ),
+                                                },
+                                            )
+                                            .await;
+                                        continue;
+                                    }
+                                    if !app_state
+                                        .cfg
+                                        .game_rules
+                                        .investment
+                                        .build
+                                        .building_cfg
+                                        .bank
+                                        .enable
+                                    {
+                                        state
+                                            .send_to(
+                                                &uuid,
+                                                ServerToPlayerMessage::InvestmentResult {
+                                                    action,
+                                                    error: true,
+                                                    reason: Some(
+                                                        InvestmentError::BuildingIsNotEnabled {},
+                                                    ),
+                                                },
+                                            )
+                                            .await;
+                                        continue;
+                                    }
+                                    let limits = app_state.cfg.game_rules.investment.store.limits;
+                                    if counts.get(&uuid).unwrap().get("store").unwrap() > &limits
+                                        && limits != 0
+                                    {
+                                        state
+                                            .send_to(
+                                                &uuid,
+                                                ServerToPlayerMessage::InvestmentResult {
+                                                    action,
+                                                    error: true,
+                                                    reason: Some(InvestmentError::LimitsExceeded {
+                                                        limit: limits,
+                                                    }),
+                                                },
+                                            )
+                                            .await;
+                                        continue;
+                                    }
+                                    let player = state.players.get(&uuid).unwrap();
+                                    *(counts.get_mut(&uuid).unwrap().get_mut("store").unwrap()) +=
+                                        1;
+                                    let mut items = HashMap::new();
+                                    let buildings = HashMap::new();
+                                    items.insert(item, count);
+                                    if !verify_recipe(&items, &buildings, player) {
+                                        state
+                                            .send_to(
+                                                &uuid,
+                                                ServerToPlayerMessage::InvestmentResult {
+                                                    action,
+                                                    error: true,
+                                                    reason: Some(InvestmentError::NoEnoughItem {
+                                                        need: items,
+                                                    }),
+                                                },
+                                            )
+                                            .await;
+                                        continue;
+                                    }
+                                    drop(state);
+                                    {
+                                        let mut state = app_state.game_state.write().await;
+                                        let player = state.players.get_mut(&uuid).unwrap();
+                                        discount_recipe(&items, &buildings, player).unwrap();
+                                    }
+                                    let mut state = app_state.game_state.write().await;
+                                    let value = count * state.resource_values.get(&item).unwrap();
+                                    let player = state.players.get_mut(&uuid).unwrap();
+                                    player.bank_money += value;
+                                    state
+                                        .send_to(
+                                            &uuid,
+                                            ServerToPlayerMessage::InvestmentResult {
+                                                action,
+                                                error: false,
+                                                reason: None,
+                                            },
+                                        )
+                                        .await;
                                 }
                                 InvestmentAction::End {} => {
                                     investment_unfinished.remove(&uuid);
+                                    let state = app_state.game_state.read().await;
+                                    state
+                                        .send_to(
+                                            &uuid,
+                                            ServerToPlayerMessage::InvestmentResult {
+                                                action,
+                                                error: false,
+                                                reason: None,
+                                            },
+                                        )
+                                        .await;
                                 }
                             },
                             _ => {
@@ -1488,12 +1596,14 @@ pub mod config {
     pub struct StoreMoneyCfg {
         pub enable: bool,
         pub needs_ap: u32,
+        pub limits: u32,
     }
     impl StoreMoneyCfg {
         fn with_defaults() -> Self {
             Self {
                 enable: true,
                 needs_ap: 3,
+                limits: 0,
             }
         }
     }
@@ -1882,6 +1992,9 @@ pub mod enums {
         },
         NoEnoughOre {
             need: u32,
+        },
+        NoEnoughItem {
+            need: HashMap<Items, u32>,
         },
     }
     #[derive(Clone, Serialize)]
