@@ -1629,6 +1629,7 @@ pub mod game {
                                     state.market.remove(index);
                                     let player = state.players.get_mut(&uuid).unwrap();
                                     *player.resources.get_mut(&item).unwrap() += 1;
+                                    player.action_points -= player_bidding.get(&uuid).unwrap();
                                     *take_count.get_mut(&item).unwrap() += 1;
                                     state
                                         .send_to(
