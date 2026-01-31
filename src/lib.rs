@@ -95,6 +95,7 @@ pub mod game {
     use crate::{discount_recipe, parse_recipe, verify_recipe};
     use rand::Rng;
     use std::collections::{HashMap, HashSet};
+    use std::process::exit;
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::sync::mpsc::error::TryRecvError;
@@ -147,12 +148,43 @@ pub mod game {
                 sleep(dur).await;
             }
         });
+        let mut player_bidding = HashMap::new();
         loop {
             let state = app_state.game_state.read().await;
             if state.epoch > total_epochs {
-                return;
+                let mut player_total_values: HashMap<Uuid, u32> = HashMap::new();
+                for (uuid, pl) in state.players.iter() {
+                    let mut total_values = 0u32;
+                    total_values += (pl.bank_money as f32
+                        * (1f32
+                            + app_state
+                                .cfg
+                                .game_rules
+                                .investment
+                                .build
+                                .building_cfg
+                                .bank
+                                .rate))
+                        .floor() as u32;
+                    for (item, count) in pl.resources.iter() {
+                        let now_value = state.resource_values.get(item).unwrap();
+                        total_values += count * now_value;
+                    }
+                    total_values += pl.buildings.len() as u32;
+                    player_total_values.insert(*uuid, total_values);
+                }
+                let mut vec: Vec<(&Uuid, &u32)> = player_total_values.iter().collect();
+                vec.sort_by(|x, y| y.1.cmp(x.1));
+                player_total_values = vec.into_iter().map(|(x, y)| (*x, *y)).collect();
+                state
+                    .broadcast(ServerBroadcastMessage::GameOver {
+                        player_total_value: player_total_values,
+                    })
+                    .await;
+                info!("游戏现在结束，感谢您的游玩。");
+                exit(0);
             }
-            let (cur_phase, cur_epoch) = { (state.phase, state.epoch) };
+            let (cur_phase, cur_epoch) = (state.phase, state.epoch);
             drop(state);
             let mut state = app_state.game_state.write().await;
             let items_per_ap = app_state.cfg.game_rules.investment.explore.items_per_ap;
@@ -1336,14 +1368,86 @@ pub mod game {
                                 }
                             },
                             _ => {
-                                if sender.send(msg).await.is_err() {
-                                    return;
-                                };
+                                sender.send(msg).await.unwrap();
                             }
                         }
                     }
                 }
             } else if cur_phase == 2 {
+                let state = app_state.game_state.read().await;
+                if !app_state.cfg.game_rules.bidding.enable {
+                    continue;
+                }
+                state
+                    .broadcast(ServerBroadcastMessage::PhaseChanged {
+                        epoch: cur_epoch,
+                        phase: cur_phase,
+                    })
+                    .await;
+                for x in state.players.values() {
+                    x.to_channel
+                        .sender
+                        .send(ServerToPlayerMessage::DataRequired {
+                            epoch: cur_epoch,
+                            phase: cur_phase,
+                        })
+                        .await
+                        .unwrap();
+                }
+                let mut bidding_unfinished: HashSet<Uuid> = state.players.keys().cloned().collect();
+                drop(state);
+                drop(player_bidding);
+                player_bidding = HashMap::new();
+                loop {
+                    if bidding_unfinished.is_empty() {
+                        break;
+                    }
+                    let senders_and_receivers: Vec<_> = {
+                        let game_state = app_state.game_state.read().await;
+                        game_state
+                            .players
+                            .iter()
+                            .map(|(uuid, player)| {
+                                (
+                                    uuid.clone(),
+                                    (
+                                        player.from_channel.sender.clone(),
+                                        player.from_channel.receiver.clone(),
+                                    ),
+                                )
+                            })
+                            .collect()
+                    };
+                    for (uuid, (sender, receiver)) in senders_and_receivers {
+                        if !bidding_unfinished.contains(&uuid) {
+                            continue;
+                        }
+                        let mut receiver_locked = receiver.lock().await;
+                        let msg = receiver_locked.try_recv();
+                        drop(receiver_locked);
+                        if msg.is_err() {
+                            let err = msg.err().unwrap();
+                            match err {
+                                TryRecvError::Empty => continue,
+                                TryRecvError::Disconnected => {
+                                    let mut game_state = app_state.game_state.write().await;
+                                    game_state.unregister_player(&uuid).await;
+                                }
+                            }
+                            continue;
+                        }
+                        let msg = msg.unwrap();
+                        match msg {
+                            PlayerToServerMessage::SendBidding { bidding } => {
+                                player_bidding.insert(uuid, bidding);
+                                bidding_unfinished.remove(&uuid);
+                            }
+                            _ => {
+                                sender.send(msg).await.unwrap();
+                            }
+                        }
+                    }
+                }
             } else if cur_phase == 3 {
             } else if cur_phase == 4 {
             }
@@ -1422,6 +1526,7 @@ pub mod config {
         pub prepare: PrepareCfg,
         pub resource_values_default: ResourceValuesDefault,
         pub investment: InvestmentCfg,
+        pub bidding: BiddingCfg,
     }
     impl GameRules {
         fn with_defaults() -> GameRules {
@@ -1429,10 +1534,31 @@ pub mod config {
                 prepare: Default::default(),
                 resource_values_default: Default::default(),
                 investment: Default::default(),
+                bidding: Default::default(),
             }
         }
     }
     impl_default_with!(GameRules);
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct BiddingCfg {
+        pub enable: bool,
+        pub broadcast_bid_message: bool,
+        pub bid_min: u32,
+        pub bid_max: u32,
+        pub take_max: u32,
+    }
+    impl BiddingCfg {
+        fn with_defaults() -> Self {
+            Self {
+                enable: true,
+                broadcast_bid_message: true,
+                bid_min: 1,
+                bid_max: 0,
+                take_max: 0,
+            }
+        }
+    }
+    impl_default_with!(BiddingCfg);
     #[derive(Serialize, Deserialize, Debug)]
     pub struct PrepareCfg {
         pub total_epochs: u32,
@@ -1942,6 +2068,7 @@ pub mod enums {
         RequestGameState {},
         RequestPlayerInfo { uuid: Uuid },
         SendInvestment { action: InvestmentAction },
+        SendBidding { bidding: u32 },
     }
     #[derive(Clone, Serialize)]
     #[serde(tag = "type", content = "target", rename_all = "snake_case")]
@@ -2010,6 +2137,9 @@ pub mod enums {
             interval: u32,
         },
         MarketEmpty {},
+        GameOver {
+            player_total_value: HashMap<Uuid, u32>,
+        },
     }
     #[derive(Serialize, Deserialize, Clone)]
     #[serde(tag = "type", content = "data", rename_all = "snake_case")]
@@ -2020,12 +2150,6 @@ pub mod enums {
         CrushOre {},
         StoreMoney { item: Items, count: u32 },
         End {},
-    }
-    #[derive(Clone)]
-    pub enum BidAction {
-        PlaceBid(u32),
-        TakeItem(u32),
-        EndTake,
     }
 }
 pub mod routes {
