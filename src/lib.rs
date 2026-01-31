@@ -88,8 +88,9 @@ pub fn discount_recipe(
 }
 pub mod game {
     use crate::enums::{
-        Building, InvestmentAction, InvestmentError, Items, PlayerToServerMessage,
-        ServerBroadcastMessage, ServerToPlayerMessage,
+        BiddingError, Building, ContendingAction, ContendingError, InvestmentAction,
+        InvestmentError, Items, PlayerToServerMessage, ServerBroadcastMessage,
+        ServerToPlayerMessage,
     };
     use crate::structs::{AppState, GameStateResponse};
     use crate::{discount_recipe, parse_recipe, verify_recipe};
@@ -112,23 +113,19 @@ pub mod game {
             )
         };
         loop {
-            {
-                let game_state = app_state.game_state.read().await;
-                if game_state.players.len() as u32 >= required_players {
-                    break;
-                }
+            let game_state = app_state.game_state.read().await;
+            if game_state.players.len() as u32 >= required_players {
+                break;
             }
         }
         info!("游戏现在开始");
         {
-            let game_state = app_state.game_state.read().await;
+            let mut game_state = app_state.game_state.write().await;
+            game_state.started = true;
+            let game_state = game_state.downgrade();
             game_state
                 .broadcast(ServerBroadcastMessage::GameStart {})
                 .await;
-        }
-        {
-            let mut game_state = app_state.game_state.write().await;
-            game_state.started = true;
         }
         let app_state_heartbeat = app_state.clone();
         tokio::spawn(async move {
@@ -1439,8 +1436,64 @@ pub mod game {
                         let msg = msg.unwrap();
                         match msg {
                             PlayerToServerMessage::SendBidding { bidding } => {
-                                player_bidding.insert(uuid, bidding);
-                                bidding_unfinished.remove(&uuid);
+                                let state = app_state.game_state.read().await;
+                                let player = state.players.get(&uuid).unwrap();
+                                if bidding < player.action_points {
+                                    state
+                                        .send_to(
+                                            &uuid,
+                                            ServerToPlayerMessage::BiddingResult {
+                                                bidding,
+                                                error: true,
+                                                reason: Some(BiddingError::NoEnoughActionPoints {
+                                                    need: bidding,
+                                                }),
+                                            },
+                                        )
+                                        .await;
+                                    continue;
+                                }
+                                let (bidding_max, bidding_min) = (
+                                    app_state.cfg.game_rules.bidding.bid_max,
+                                    app_state.cfg.game_rules.bidding.bid_min,
+                                );
+                                if bidding >= bidding_min && bidding <= bidding_max {
+                                    if app_state.cfg.game_rules.bidding.broadcast_bid_message {
+                                        state
+                                            .broadcast(ServerBroadcastMessage::OthersBidding {
+                                                uuid,
+                                                bidding,
+                                            })
+                                            .await;
+                                    }
+                                    player_bidding.insert(uuid, bidding);
+                                    bidding_unfinished.remove(&uuid);
+                                    state
+                                        .send_to(
+                                            &uuid,
+                                            ServerToPlayerMessage::BiddingResult {
+                                                bidding,
+                                                error: false,
+                                                reason: None,
+                                            },
+                                        )
+                                        .await;
+                                } else {
+                                    state
+                                        .send_to(
+                                            &uuid,
+                                            ServerToPlayerMessage::BiddingResult {
+                                                bidding,
+                                                error: true,
+                                                reason: Some(BiddingError::BiddingNotValid {
+                                                    max: bidding_max,
+                                                    min: bidding_min,
+                                                }),
+                                            },
+                                        )
+                                        .await;
+                                    continue;
+                                }
                             }
                             _ => {
                                 sender.send(msg).await.unwrap();
@@ -1448,7 +1501,198 @@ pub mod game {
                         }
                     }
                 }
+                let mut tmp_player_bidding: Vec<(_, _)> = player_bidding.iter().collect();
+                tmp_player_bidding.sort_by(|x, y| y.1.cmp(x.1));
+                player_bidding = tmp_player_bidding
+                    .into_iter()
+                    .map(|(x, y)| (*x, *y))
+                    .collect();
+                if app_state.cfg.game_rules.bidding.broadcast_bid_message {
+                    let state = app_state.game_state.read().await;
+                    state
+                        .broadcast(ServerBroadcastMessage::BiddingSorted {
+                            order: player_bidding.keys().cloned().collect(),
+                        })
+                        .await;
+                }
             } else if cur_phase == 3 {
+                let mut take_count: HashMap<Items, u32> = HashMap::new();
+                take_count.insert(Items::Ore, 0);
+                take_count.insert(Items::Wood, 0);
+                take_count.insert(Items::Diamond, 0);
+                take_count.insert(Items::Gold, 0);
+                take_count.insert(Items::Iron, 0);
+                take_count.insert(Items::Food, 0);
+                let state = app_state.game_state.read().await;
+                if !app_state.cfg.game_rules.bidding.enable {
+                    continue;
+                }
+                state
+                    .broadcast(ServerBroadcastMessage::PhaseChanged {
+                        epoch: cur_epoch,
+                        phase: cur_phase,
+                    })
+                    .await;
+                for x in state.players.values() {
+                    x.to_channel
+                        .sender
+                        .send(ServerToPlayerMessage::DataRequired {
+                            epoch: cur_epoch,
+                            phase: cur_phase,
+                        })
+                        .await
+                        .unwrap();
+                }
+                let mut bidding_unfinished: HashSet<Uuid> = state.players.keys().cloned().collect();
+                drop(state);
+                drop(player_bidding);
+                player_bidding = HashMap::new();
+                loop {
+                    if bidding_unfinished.is_empty() {
+                        break;
+                    }
+                    let senders_and_receivers: Vec<_> = {
+                        let game_state = app_state.game_state.read().await;
+                        game_state
+                            .players
+                            .iter()
+                            .map(|(uuid, player)| {
+                                (
+                                    uuid.clone(),
+                                    (
+                                        player.from_channel.sender.clone(),
+                                        player.from_channel.receiver.clone(),
+                                    ),
+                                )
+                            })
+                            .collect()
+                    };
+                    for (uuid, (sender, receiver)) in senders_and_receivers {
+                        if !bidding_unfinished.contains(&uuid) {
+                            continue;
+                        }
+                        let mut receiver_locked = receiver.lock().await;
+                        let msg = receiver_locked.try_recv();
+                        drop(receiver_locked);
+                        if msg.is_err() {
+                            let err = msg.err().unwrap();
+                            match err {
+                                TryRecvError::Empty => continue,
+                                TryRecvError::Disconnected => {
+                                    let mut game_state = app_state.game_state.write().await;
+                                    game_state.unregister_player(&uuid).await;
+                                }
+                            }
+                            continue;
+                        }
+                        let msg = msg.unwrap();
+                        match msg {
+                            PlayerToServerMessage::SendContending { action } => match action {
+                                ContendingAction::Take { item, index } => {
+                                    let state = app_state.game_state.read().await;
+                                    let player = state.players.get(&uuid).unwrap();
+                                    let bidding = *player_bidding.get(&uuid).unwrap();
+                                    if player.action_points < bidding {
+                                        state
+                                            .send_to(
+                                                &uuid,
+                                                ServerToPlayerMessage::ContendingResult {
+                                                    bidding,
+                                                    error: true,
+                                                    reason: Some(
+                                                        ContendingError::NoEnoughActionPoints {
+                                                            need: bidding,
+                                                        },
+                                                    ),
+                                                },
+                                            )
+                                            .await;
+                                        continue;
+                                    }
+                                    if state.market.get(index).unwrap() != &item {
+                                        state
+                                            .send_to(
+                                                &uuid,
+                                                ServerToPlayerMessage::ContendingResult {
+                                                    bidding,
+                                                    error: true,
+                                                    reason: Some(ContendingError::ItemNotFound {}),
+                                                },
+                                            )
+                                            .await;
+                                        continue;
+                                    }
+                                    drop(state);
+                                    let mut state = app_state.game_state.write().await;
+                                    state.market.remove(index);
+                                    let player = state.players.get_mut(&uuid).unwrap();
+                                    *player.resources.get_mut(&item).unwrap() += 1;
+                                    *take_count.get_mut(&item).unwrap() += 1;
+                                    state
+                                        .send_to(
+                                            &uuid,
+                                            ServerToPlayerMessage::ContendingResult {
+                                                bidding,
+                                                error: false,
+                                                reason: None,
+                                            },
+                                        )
+                                        .await;
+                                    if app_state.cfg.game_rules.bidding.broadcast_bid_message {
+                                        state
+                                            .broadcast(ServerBroadcastMessage::OthersContending {
+                                                uuid,
+                                                index,
+                                            })
+                                            .await;
+                                    }
+                                }
+                                ContendingAction::End {} => {
+                                    bidding_unfinished.remove(&uuid);
+                                }
+                            },
+                            _ => {
+                                sender.send(msg).await.unwrap();
+                            }
+                        }
+                    }
+                }
+                if !app_state.cfg.game_rules.value_changing.enable {
+                    continue;
+                }
+                let (mark_up_when, discount_when, mark_up, discount) = (
+                    app_state.cfg.game_rules.value_changing.mark_up_when,
+                    app_state.cfg.game_rules.value_changing.discount_when,
+                    app_state.cfg.game_rules.value_changing.mark_up,
+                    app_state.cfg.game_rules.value_changing.discount,
+                );
+                let mut state = app_state.game_state.write().await;
+                for (x, y) in take_count {
+                    if y > mark_up_when && mark_up_when != 0 {
+                        let now;
+                        {
+                            let tmp = state.resource_values.get_mut(&x).unwrap();
+                            *tmp += mark_up;
+                            now = *tmp;
+                        }
+                        state
+                            .broadcast(ServerBroadcastMessage::ValueChanged { item: x, now })
+                            .await;
+                    } else if y < discount_when && discount_when != 0 {
+                        let now;
+                        {
+                            let tmp = state.resource_values.get_mut(&x).unwrap();
+                            *tmp -= discount;
+                            if tmp < &mut 1 {
+                                *tmp = 1;
+                            }
+                            now = *tmp;
+                        }
+                        state
+                            .broadcast(ServerBroadcastMessage::ValueChanged { item: x, now })
+                            .await;
+                    }
+                }
             } else if cur_phase == 4 {
             }
             let mut game_state = app_state.game_state.write().await;
@@ -1527,6 +1771,7 @@ pub mod config {
         pub resource_values_default: ResourceValuesDefault,
         pub investment: InvestmentCfg,
         pub bidding: BiddingCfg,
+        pub value_changing: ValueChangingCfg,
     }
     impl GameRules {
         fn with_defaults() -> GameRules {
@@ -1535,6 +1780,7 @@ pub mod config {
                 resource_values_default: Default::default(),
                 investment: Default::default(),
                 bidding: Default::default(),
+                value_changing: Default::default(),
             }
         }
     }
@@ -1545,7 +1791,6 @@ pub mod config {
         pub broadcast_bid_message: bool,
         pub bid_min: u32,
         pub bid_max: u32,
-        pub take_max: u32,
     }
     impl BiddingCfg {
         fn with_defaults() -> Self {
@@ -1554,11 +1799,30 @@ pub mod config {
                 broadcast_bid_message: true,
                 bid_min: 1,
                 bid_max: 0,
-                take_max: 0,
             }
         }
     }
     impl_default_with!(BiddingCfg);
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct ValueChangingCfg {
+        pub enable: bool,
+        pub mark_up_when: u32,
+        pub discount_when: u32,
+        pub mark_up: u32,
+        pub discount: u32,
+    }
+    impl ValueChangingCfg {
+        fn with_defaults() -> Self {
+            Self {
+                enable: true,
+                mark_up_when: 3,
+                discount_when: 3,
+                mark_up: 1,
+                discount: 1,
+            }
+        }
+    }
+    impl_default_with!(ValueChangingCfg);
     #[derive(Serialize, Deserialize, Debug)]
     pub struct PrepareCfg {
         pub total_epochs: u32,
@@ -1681,8 +1945,8 @@ pub mod config {
     #[derive(Serialize, Deserialize, Debug)]
     pub struct InvestmentCfg {
         pub enable: bool,
-        pub explore: ExploreSettings,
-        pub exchange: ExchangeSettings,
+        pub explore: ExploreCfg,
+        pub exchange: ExchangeCfg,
         pub build: BuildCfg,
         pub crush: CrushOreCfg,
         pub store: StoreMoneyCfg,
@@ -1790,12 +2054,12 @@ pub mod config {
     }
     impl_default_with!(BuildingCfg);
     #[derive(Serialize, Deserialize, Debug)]
-    pub struct ExploreSettings {
+    pub struct ExploreCfg {
         pub enable: bool,
         pub items_per_ap: u32,
         pub explore_limits: u32,
     }
-    impl ExploreSettings {
+    impl ExploreCfg {
         fn with_defaults() -> Self {
             Self {
                 enable: true,
@@ -1804,14 +2068,14 @@ pub mod config {
             }
         }
     }
-    impl_default_with!(ExploreSettings);
+    impl_default_with!(ExploreCfg);
     #[derive(Serialize, Deserialize, Debug)]
-    pub struct ExchangeSettings {
+    pub struct ExchangeCfg {
         pub enable: bool,
         pub ap_per_food: u32,
         pub exchange_limits: u32,
     }
-    impl ExchangeSettings {
+    impl ExchangeCfg {
         fn with_defaults() -> Self {
             Self {
                 enable: true,
@@ -1820,7 +2084,7 @@ pub mod config {
             }
         }
     }
-    impl_default_with!(ExchangeSettings);
+    impl_default_with!(ExchangeCfg);
     #[derive(Serialize, Deserialize, Debug)]
     pub struct FarmCfg {
         pub enable: bool,
@@ -1963,7 +2227,7 @@ pub mod config {
 pub mod enums {
     use crate::structs::{GameStateResponse, PlayerInfoResponse};
     use serde::{Deserialize, Serialize};
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use uuid::Uuid;
 
     #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
@@ -2069,6 +2333,7 @@ pub mod enums {
         RequestPlayerInfo { uuid: Uuid },
         SendInvestment { action: InvestmentAction },
         SendBidding { bidding: u32 },
+        SendContending { action: ContendingAction },
     }
     #[derive(Clone, Serialize)]
     #[serde(tag = "type", content = "target", rename_all = "snake_case")]
@@ -2097,6 +2362,18 @@ pub mod enums {
         BuildingWorked {
             building: Building,
         },
+        BiddingResult {
+            bidding: u32,
+            error: bool,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            reason: Option<BiddingError>,
+        },
+        ContendingResult {
+            bidding: u32,
+            error: bool,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            reason: Option<ContendingError>,
+        },
     }
     #[derive(Serialize, Clone)]
     #[serde(tag = "type", content = "target", rename_all = "snake_case")]
@@ -2124,6 +2401,18 @@ pub mod enums {
             need: HashMap<Items, u32>,
         },
     }
+    #[derive(Serialize, Clone)]
+    #[serde(tag = "type", content = "target", rename_all = "snake_case")]
+    pub enum BiddingError {
+        NoEnoughActionPoints { need: u32 },
+        BiddingNotValid { max: u32, min: u32 },
+    }
+    #[derive(Serialize, Clone)]
+    #[serde(tag = "type", content = "target", rename_all = "snake_case")]
+    pub enum ContendingError {
+        NoEnoughActionPoints { need: u32 },
+        ItemNotFound {},
+    }
     #[derive(Clone, Serialize)]
     #[serde(tag = "type", content = "target", rename_all = "snake_case")]
     pub enum ServerBroadcastMessage {
@@ -2140,6 +2429,21 @@ pub mod enums {
         GameOver {
             player_total_value: HashMap<Uuid, u32>,
         },
+        BiddingSorted {
+            order: HashSet<Uuid>,
+        },
+        OthersBidding {
+            uuid: Uuid,
+            bidding: u32,
+        },
+        OthersContending {
+            uuid: Uuid,
+            index: usize,
+        },
+        ValueChanged {
+            item: Items,
+            now: u32,
+        },
     }
     #[derive(Serialize, Deserialize, Clone)]
     #[serde(tag = "type", content = "data", rename_all = "snake_case")]
@@ -2149,6 +2453,12 @@ pub mod enums {
         Build { building: Building },
         CrushOre {},
         StoreMoney { item: Items, count: u32 },
+        End {},
+    }
+    #[derive(Serialize, Deserialize, Clone)]
+    #[serde(tag = "type", content = "data", rename_all = "snake_case")]
+    pub enum ContendingAction {
+        Take { index: usize, item: Items },
         End {},
     }
 }
