@@ -2397,7 +2397,7 @@ pub mod config {
             let recipe_vec = vec!["item: gold*3".to_string(), "building: miner*1".to_string()];
             Self {
                 enable: true,
-                auto_give_ore: 3,
+                auto_give_ore: 5,
                 recipe: recipe_vec,
             }
         }
