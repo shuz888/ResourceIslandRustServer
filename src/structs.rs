@@ -47,11 +47,6 @@ impl From<&GameState> for GameStateResponse {
         }
     }
 }
-impl GameStateResponse {
-    pub fn with_error() -> GameStateResponse {
-        Default::default()
-    }
-}
 impl Default for GameStateResponse {
     fn default() -> Self {
         GameStateResponse {
@@ -96,11 +91,6 @@ impl From<&Player> for PlayerInfoResponse {
             buildings,
             bank_money,
         }
-    }
-}
-impl PlayerInfoResponse {
-    pub fn with_error() -> PlayerInfoResponse {
-        Default::default()
     }
 }
 impl Default for PlayerInfoResponse {

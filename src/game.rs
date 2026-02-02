@@ -97,6 +97,9 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
         let items_per_ap = app_state.cfg.game_rules.investment.explore.items_per_ap;
         let mut draw_cards = 0u32;
         if state.market.is_empty() {
+            state
+                .broadcast(ServerBroadcastMessage::MarketEmpty {})
+                .await;
             for pl in state.players.values_mut() {
                 if pl.action_points > 1 {
                     pl.action_points = pl.action_points - 1;

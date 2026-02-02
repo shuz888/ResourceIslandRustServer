@@ -166,7 +166,6 @@ pub enum InvestmentError {
     NoEnoughFood {
         need: u32,
     },
-    DontHaveMinerOrSuperMiner {},
     LimitsExceeded {
         limit: u32,
     },
