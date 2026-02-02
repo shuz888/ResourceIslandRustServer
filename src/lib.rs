@@ -1535,47 +1535,48 @@ pub mod game {
                         phase: cur_phase,
                     })
                     .await;
-                for x in state.players.values() {
-                    x.to_channel
-                        .sender
-                        .send(ServerToPlayerMessage::DataRequired {
-                            epoch: cur_epoch,
-                            phase: cur_phase,
-                        })
-                        .await
-                        .unwrap();
-                }
-                let mut bidding_unfinished: HashSet<Uuid> = state.players.keys().cloned().collect();
                 drop(state);
-                drop(player_bidding);
-                player_bidding = HashMap::new();
-                loop {
-                    if bidding_unfinished.is_empty() {
-                        break;
+                let senders_and_receivers: Vec<_> = {
+                    let game_state = app_state.game_state.read().await;
+                    player_bidding
+                        .iter()
+                        .map(|(x, _y)| {
+                            let sender = game_state
+                                .players
+                                .get(x)
+                                .unwrap()
+                                .from_channel
+                                .sender
+                                .clone();
+                            let receiver = game_state
+                                .players
+                                .get(x)
+                                .unwrap()
+                                .from_channel
+                                .receiver
+                                .clone();
+                            (*x, (sender, receiver))
+                        })
+                        .collect()
+                };
+                for (uuid, (sender, receiver)) in senders_and_receivers {
+                    if !player_bidding.contains_key(&uuid) {
+                        continue;
                     }
-                    let senders_and_receivers: Vec<_> = {
-                        let game_state = app_state.game_state.read().await;
-                        game_state
-                            .players
-                            .iter()
-                            .map(|(uuid, player)| {
-                                (
-                                    uuid.clone(),
-                                    (
-                                        player.from_channel.sender.clone(),
-                                        player.from_channel.receiver.clone(),
-                                    ),
-                                )
-                            })
-                            .collect()
-                    };
-                    for (uuid, (sender, receiver)) in senders_and_receivers {
-                        if !bidding_unfinished.contains(&uuid) {
-                            continue;
-                        }
-                        let mut receiver_locked = receiver.lock().await;
+                    let state = app_state.game_state.read().await;
+                    state
+                        .send_to(
+                            &uuid,
+                            ServerToPlayerMessage::DataRequired {
+                                epoch: cur_epoch,
+                                phase: cur_phase,
+                            },
+                        )
+                        .await;
+                    drop(state);
+                    let mut receiver_locked = receiver.lock().await;
+                    loop {
                         let msg = receiver_locked.try_recv();
-                        drop(receiver_locked);
                         if msg.is_err() {
                             let err = msg.err().unwrap();
                             match err {
@@ -1599,7 +1600,7 @@ pub mod game {
                                             .send_to(
                                                 &uuid,
                                                 ServerToPlayerMessage::ContendingResult {
-                                                    bidding,
+                                                    action,
                                                     error: true,
                                                     reason: Some(
                                                         ContendingError::NoEnoughActionPoints {
@@ -1616,7 +1617,7 @@ pub mod game {
                                             .send_to(
                                                 &uuid,
                                                 ServerToPlayerMessage::ContendingResult {
-                                                    bidding,
+                                                    action,
                                                     error: true,
                                                     reason: Some(ContendingError::ItemNotFound {}),
                                                 },
@@ -1631,27 +1632,35 @@ pub mod game {
                                     *player.resources.get_mut(&item).unwrap() += 1;
                                     player.action_points -= player_bidding.get(&uuid).unwrap();
                                     *take_count.get_mut(&item).unwrap() += 1;
+                                    if app_state.cfg.game_rules.bidding.broadcast_bid_message {
+                                        state
+                                            .broadcast(ServerBroadcastMessage::OthersContending {
+                                                action: action.clone(),
+                                            })
+                                            .await;
+                                    }
                                     state
                                         .send_to(
                                             &uuid,
                                             ServerToPlayerMessage::ContendingResult {
-                                                bidding,
+                                                action,
                                                 error: false,
                                                 reason: None,
                                             },
                                         )
                                         .await;
+                                }
+                                ContendingAction::End {} => {
+                                    let state = app_state.game_state.read().await;
                                     if app_state.cfg.game_rules.bidding.broadcast_bid_message {
                                         state
                                             .broadcast(ServerBroadcastMessage::OthersContending {
-                                                uuid,
-                                                index,
+                                                action,
                                             })
                                             .await;
                                     }
-                                }
-                                ContendingAction::End {} => {
-                                    bidding_unfinished.remove(&uuid);
+                                    player_bidding.remove(&uuid);
+                                    break;
                                 }
                             },
                             _ => {
@@ -2606,7 +2615,7 @@ pub mod enums {
             reason: Option<BiddingError>,
         },
         ContendingResult {
-            bidding: u32,
+            action: ContendingAction,
             error: bool,
             #[serde(skip_serializing_if = "Option::is_none")]
             reason: Option<ContendingError>,
@@ -2674,8 +2683,7 @@ pub mod enums {
             bidding: u32,
         },
         OthersContending {
-            uuid: Uuid,
-            index: usize,
+            action: ContendingAction,
         },
         ValueChanged {
             item: Items,

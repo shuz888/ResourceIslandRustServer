@@ -1,13 +1,15 @@
 # 资源岛争夺游戏服务端
 ### 游戏背景
 你乘坐的船只在海上遇难，你和三位其他乘客侥幸存活并来到了这片岛屿，开始自己的生存之旅，你们发现岛上的资源是有限的，于是开始开采矿石，修建建筑来争夺这些物资并应对可能迎来的灾难。
+### 游戏规则
+详见[rule.md](https://github.com/shuz888/ResourceIslandRustServer/blob/main/.docs/rule.md)
 ### 关于服务端
 #### TODO：
 - [x] 基本服务端结构
 - [x] 配置文件功能
 - [x] 游戏主循环
 - [ ] tests
-- [ ] 编写游戏规则文档
+- [x] 编写游戏规则文档
 - [ ] 编写适配的客户端
 
 服务器借助axum框架、serde库等实现服务、配置功能。
@@ -26,3 +28,5 @@
 ##### tests/
 - test.rs：编写测试。
 ---
+### 关于客户端的编写
+服务端网络通信说明详见[protocol.md](https://github.com/shuz888/ResourceIslandRustServer/blob/main/.docs/protocol.md)
