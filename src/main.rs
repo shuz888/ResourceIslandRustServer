@@ -1,14 +1,20 @@
+mod config;
+mod enums;
+mod game;
+mod routes;
+mod structs;
+mod utils;
+
 use axum::middleware::from_fn_with_state;
 use axum::routing::{any, get};
+use config::GameCfg;
 use rand_chacha::ChaCha20Rng;
 use rand_chacha::rand_core::SeedableRng;
 use rand_seeder::SipHasher;
 use rand_seeder::rand_core::RngCore;
-use resource_island_server::config::GameCfg;
-use resource_island_server::routes;
-use resource_island_server::routes::{root, ws_handler};
-use resource_island_server::structs::{AppState, GameState};
+use routes::{root, ws_handler};
 use std::sync::Arc;
+use structs::{AppState, GameState};
 use tracing::{debug, error, info, trace};
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -61,7 +67,7 @@ async fn main() {
     );
     // 开启游戏主线程
     trace!("开启游戏主线程");
-    tokio::spawn(resource_island_server::game::game_main_loop(state));
+    tokio::spawn(game::game_main_loop(state));
     // 创建服务
     trace!("创建服务");
     let listener = tokio::net::TcpListener::bind(whole_address).await.unwrap();

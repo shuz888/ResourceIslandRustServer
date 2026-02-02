@@ -8,7 +8,7 @@
 - [x] 基本服务端结构
 - [x] 配置文件功能
 - [x] 游戏主循环
-- [ ] tests
+- [ ] ~~tests~~
 - [x] 编写游戏规则文档
 - [ ] 编写适配的客户端
 
@@ -19,12 +19,11 @@
 #### 文件功能一览
 ##### src/
 - main.rs：服务端初始化，加载配置，是入口文件。
-- lib.rs：以下所有模块全部迁移至此。
-- ~~config.rs：负责定义配置结构体。~~
-- ~~enums.rs：存放枚举类型，包含服务器客户端互发消息的DTO。~~
-- ~~game.rs：游戏主循环。~~
-- ~~routes.rs：路由handler。~~
-- ~~structs.rs：存放结构体类型，定义游戏状态（State）结构体，玩家（Player）结构体等，包含DTO。~~
+- config.rs：负责定义配置结构体。
+- enums.rs：存放枚举类型，包含服务器客户端互发消息的DTO。
+- game.rs：游戏主循环。
+- routes.rs：路由handler。
+- structs.rs：存放结构体类型，定义游戏状态（State）结构体，玩家（Player）结构体等，包含DTO。
 ##### tests/
 - test.rs：编写测试。
 ---
