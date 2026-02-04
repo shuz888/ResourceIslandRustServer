@@ -1528,7 +1528,7 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                         PlayerToServerMessage::SendBidding { bidding } => {
                             let state = app_state.game_state.read().await;
                             let player = state.players.get(&uuid).unwrap();
-                            if bidding < player.action_points {
+                            if bidding > player.action_points {
                                 state
                                     .send_to(
                                         &uuid,
