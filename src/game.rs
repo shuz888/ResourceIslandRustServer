@@ -508,6 +508,7 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                             .await;
                                         continue;
                                     }
+                                    drop(state);
                                     let mut game_state = app_state.game_state.write().await;
                                     let player_mut = game_state.players.get_mut(&uuid).unwrap();
                                     if player_mut.resources.get(&Items::Food).unwrap() < &1 {
