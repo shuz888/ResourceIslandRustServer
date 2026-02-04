@@ -1527,6 +1527,27 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                     match msg {
                         PlayerToServerMessage::SendBidding { bidding } => {
                             let state = app_state.game_state.read().await;
+                            if bidding == 0 {
+                                if app_state.cfg.game_rules.bidding.broadcast_bid_message {
+                                    state
+                                        .broadcast(ServerBroadcastMessage::OthersBidding {
+                                            uuid,
+                                            bidding,
+                                        })
+                                        .await;
+                                }
+                                state
+                                    .send_to(
+                                        &uuid,
+                                        ServerToPlayerMessage::BiddingResult {
+                                            bidding,
+                                            error: false,
+                                            reason: None,
+                                        },
+                                    )
+                                    .await;
+                                continue;
+                            }
                             let player = state.players.get(&uuid).unwrap();
                             if bidding > player.action_points {
                                 state
@@ -1547,7 +1568,9 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                 app_state.cfg.game_rules.bidding.bid_max,
                                 app_state.cfg.game_rules.bidding.bid_min,
                             );
-                            if bidding >= bidding_min && bidding <= bidding_max {
+                            if bidding >= bidding_min
+                                && (bidding <= bidding_max || bidding_max == 0)
+                            {
                                 if app_state.cfg.game_rules.bidding.broadcast_bid_message {
                                     state
                                         .broadcast(ServerBroadcastMessage::OthersBidding {
