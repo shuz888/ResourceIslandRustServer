@@ -10,11 +10,13 @@
 - [x] 游戏主循环
 - [ ] ~~tests~~
 - [x] 编写游戏规则文档
-- [ ] 编写适配的客户端
+- [x] 编写适配的客户端
 
 服务器借助axum框架、serde库等实现服务、配置功能。
 
-仓库没有release代表第三个TODO没有完成。
+我建议你**不要更改服务器配置文件**，放在那里就好，否则无法适用rule.md的规则。
+
+将很快发布第一个release。
 
 #### 文件功能一览
 ##### src/
@@ -29,3 +31,7 @@
 ---
 ### 关于客户端的编写
 服务端网络通信说明详见[protocol.md](https://github.com/shuz888/ResourceIslandRustServer/blob/main/.docs/protocol.md)
+
+AI编写的客户端：目前没有发现什么问题，可以在[这里](https://github.com/shuz888/shuz888.github.io/blob/main/index.html)下载。
+
+需要注意的是，要用请下载到本地，并且**不能直接点开**，要用类似`python -m http.server`这样的服务端挂一下，然后在浏览器访问服务端地址，否则无法连接（实测）。
