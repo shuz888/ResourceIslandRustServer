@@ -1636,6 +1636,8 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
             take_count.insert(Items::Food, 0);
             let state = app_state.game_state.read().await;
             if !app_state.cfg.game_rules.bidding.enable {
+                let mut state = app_state.game_state.write().await;
+                state.increase_phase().await;
                 continue;
             }
             state
@@ -1845,11 +1847,15 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                 let state = app_state.game_state.read().await;
                 if !app_state.cfg.game_rules.events.enable {
                     drop(state);
+                    let mut state = app_state.game_state.write().await;
+                    state.increase_phase().await;
                     continue;
                 }
                 if state.epoch % app_state.cfg.game_rules.events.interval != 0
                     && state.epoch != app_state.cfg.game_rules.prepare.total_epochs
                 {
+                    let mut state = app_state.game_state.write().await;
+                    state.increase_phase().await;
                     continue;
                 }
             }

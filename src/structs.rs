@@ -8,7 +8,6 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
-use tracing::trace;
 use uuid::Uuid;
 
 #[derive(Serialize, Clone, Debug)]
@@ -22,7 +21,6 @@ pub struct GameStateResponse {
 }
 impl From<&GameState> for GameStateResponse {
     fn from(value: &GameState) -> Self {
-        trace!("{:?}", value.market);
         let market = value
             .market
             .iter()
