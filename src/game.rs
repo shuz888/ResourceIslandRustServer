@@ -139,7 +139,7 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                 for building in pl.buildings.iter() {
                     match building {
                         Building::Farm => {
-                            if app_state
+                            if !app_state
                                 .cfg
                                 .game_rules
                                 .investment
@@ -169,7 +169,7 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                 .unwrap();
                         }
                         Building::SuperFarm => {
-                            if app_state
+                            if !app_state
                                 .cfg
                                 .game_rules
                                 .investment
@@ -199,7 +199,7 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                 .unwrap();
                         }
                         Building::Miner => {
-                            if app_state
+                            if !app_state
                                 .cfg
                                 .game_rules
                                 .investment
@@ -234,9 +234,17 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                 let now_ore_count = pl.resources.get(&ore).unwrap();
                                 pl.resources.insert(ore, now_ore_count + 1);
                             }
+                            pl.to_channel
+                                .sender
+                                .clone()
+                                .send(ServerToPlayerMessage::BuildingWorked {
+                                    building: Building::Miner,
+                                })
+                                .await
+                                .unwrap();
                         }
                         Building::SuperMiner => {
-                            if app_state
+                            if !app_state
                                 .cfg
                                 .game_rules
                                 .investment
@@ -271,9 +279,17 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                 let now_ore_count = pl.resources.get(&ore).unwrap();
                                 pl.resources.insert(ore, now_ore_count + 1);
                             }
+                            pl.to_channel
+                                .sender
+                                .clone()
+                                .send(ServerToPlayerMessage::BuildingWorked {
+                                    building: Building::SuperMiner,
+                                })
+                                .await
+                                .unwrap();
                         }
                         Building::Lumber => {
-                            if app_state
+                            if !app_state
                                 .cfg
                                 .game_rules
                                 .investment
@@ -302,6 +318,14 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                 let now_ore_count = pl.resources.get(&ore).unwrap();
                                 pl.resources.insert(ore, now_ore_count + 1);
                             }
+                            pl.to_channel
+                                .sender
+                                .clone()
+                                .send(ServerToPlayerMessage::BuildingWorked {
+                                    building: Building::Lumber,
+                                })
+                                .await
+                                .unwrap();
                         }
                         _ => {}
                     }
