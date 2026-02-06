@@ -1782,14 +1782,24 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                 }
                             }
                             ContendingAction::End {} => {
+                                let state = app_state.game_state.read().await;
                                 if app_state.cfg.game_rules.bidding.broadcast_bid_message {
-                                    let state = app_state.game_state.read().await;
                                     state
                                         .broadcast(ServerBroadcastMessage::OthersContending {
-                                            action,
+                                            action: action.clone(),
                                         })
                                         .await;
                                 }
+                                state
+                                    .send_to(
+                                        &uuid,
+                                        ServerToPlayerMessage::ContendingResult {
+                                            action,
+                                            error: false,
+                                            reason: None,
+                                        },
+                                    )
+                                    .await;
                                 player_bidding.remove(&uuid);
                                 break;
                             }
