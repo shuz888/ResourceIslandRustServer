@@ -1854,6 +1854,7 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                 if state.epoch % app_state.cfg.game_rules.events.interval != 0
                     && state.epoch != app_state.cfg.game_rules.prepare.total_epochs
                 {
+                    drop(state);
                     let mut state = app_state.game_state.write().await;
                     state.increase_phase().await;
                     continue;
