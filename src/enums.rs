@@ -100,7 +100,7 @@ impl Into<&'static str> for &Building {
         }
     }
 }
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum Events {
     PirateAttack,
@@ -108,7 +108,7 @@ pub enum Events {
     ApBonus,
     Famine,
 }
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Debug)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum PlayerToServerMessage {
     RequestGameState {},
@@ -117,7 +117,7 @@ pub enum PlayerToServerMessage {
     SendBidding { bidding: u32 },
     SendContending { action: ContendingAction },
 }
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Debug)]
 #[serde(tag = "type", content = "target", rename_all = "snake_case")]
 pub enum ServerToPlayerMessage {
     Broadcast(ServerBroadcastMessage),
@@ -157,7 +157,7 @@ pub enum ServerToPlayerMessage {
         reason: Option<ContendingError>,
     },
 }
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug)]
 #[serde(tag = "type", content = "target", rename_all = "snake_case")]
 pub enum InvestmentError {
     NoEnoughActionPoints {
@@ -182,19 +182,19 @@ pub enum InvestmentError {
         need: HashMap<Items, u32>,
     },
 }
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug)]
 #[serde(tag = "type", content = "target", rename_all = "snake_case")]
 pub enum BiddingError {
     NoEnoughActionPoints { need: u32 },
     BiddingNotValid { max: u32, min: u32 },
 }
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug)]
 #[serde(tag = "type", content = "target", rename_all = "snake_case")]
 pub enum ContendingError {
     NoEnoughActionPoints { need: u32 },
     ItemNotFound {},
 }
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Debug)]
 #[serde(tag = "type", content = "target", rename_all = "snake_case")]
 pub enum ServerBroadcastMessage {
     PhaseChanged {
@@ -228,7 +228,7 @@ pub enum ServerBroadcastMessage {
         event: Events,
     },
 }
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum InvestmentAction {
     Explore {},
@@ -238,7 +238,7 @@ pub enum InvestmentAction {
     StoreMoney { item: Items, count: u32 },
     End {},
 }
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum ContendingAction {
     Take { index: usize, item: Items },

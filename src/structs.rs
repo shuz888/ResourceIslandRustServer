@@ -11,7 +11,7 @@ use tokio::sync::{Mutex, RwLock};
 use tracing::trace;
 use uuid::Uuid;
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug)]
 pub struct GameStateResponse {
     pub players: Vec<Uuid>,
     pub market: Vec<&'static str>,
@@ -31,11 +31,13 @@ impl From<&GameState> for GameStateResponse {
         let epoch = value.epoch;
         let phase = value.phase;
         let started = value.started;
-        let values = value
+        let mut values = value
             .resource_values
             .iter()
             .map(|(item, &v)| (item.into(), v))
-            .collect::<HashMap<&'static str, u32>>();
+            .collect::<Vec<(&'static str, u32)>>();
+        values.sort_unstable_by_key(|(_x, y)| u32::MAX - *y);
+        let values: HashMap<_, _> = values.into_iter().collect();
         let players = value.players.keys().cloned().collect::<Vec<Uuid>>();
         Self {
             players,
@@ -59,7 +61,7 @@ impl Default for GameStateResponse {
         }
     }
 }
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug)]
 pub struct PlayerInfoResponse {
     name: &'static str,
     action_points: u32,

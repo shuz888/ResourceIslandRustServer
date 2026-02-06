@@ -1850,6 +1850,11 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                     drop(state);
                     continue;
                 }
+                if state.epoch % app_state.cfg.game_rules.events.interval != 0
+                    && state.epoch != app_state.cfg.game_rules.prepare.total_epochs
+                {
+                    continue;
+                }
             }
             {
                 let state = app_state.game_state.read().await;

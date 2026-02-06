@@ -109,6 +109,7 @@ pub struct EventsCfg {
     pub famine: FamineCfg,
     pub crop_bonus: CropBonusCfg,
     pub ap_bonus: ApBonusCfg,
+    pub interval: u32,
 }
 impl EventsCfg {
     fn with_defaults() -> Self {
@@ -118,6 +119,7 @@ impl EventsCfg {
             famine: Default::default(),
             crop_bonus: Default::default(),
             ap_bonus: Default::default(),
+            interval: 5,
         }
     }
 }

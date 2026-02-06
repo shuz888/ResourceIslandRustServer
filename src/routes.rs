@@ -9,7 +9,7 @@ use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, error, info};
+use tracing::{error, info, trace};
 use uuid::Uuid;
 
 fn parse_params(input: &str) -> HashMap<String, String> {
@@ -110,7 +110,7 @@ async fn handler_on_upgrade(state: Arc<AppState>, uuid: Uuid, socket: WebSocket)
 }
 async fn handler_reader(state: Arc<AppState>, uuid: Uuid, mut reader: SplitStream<WebSocket>) {
     while let Some(Ok(msg)) = reader.next().await {
-        debug!("接收到消息");
+        trace!("接收到消息, {:?}", msg);
         match msg {
             Message::Text(msg) => {
                 let str = msg.to_string();
@@ -210,7 +210,7 @@ async fn handler_writer(
         };
 
         if let Some(msg) = msg {
-            debug!("准备发送消息");
+            trace!("准备发送消息, {:?}", msg);
             let send_result = writer
                 .send(Message::Text(Utf8Bytes::from(
                     serde_json::to_string(&msg).unwrap().as_str(),
