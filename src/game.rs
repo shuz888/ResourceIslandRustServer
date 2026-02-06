@@ -1615,12 +1615,9 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                     }
                 }
             }
-            let mut tmp_player_bidding: Vec<(_, _)> = player_bidding.iter().collect();
-            tmp_player_bidding.sort_by(|x, y| y.1.cmp(x.1));
-            player_bidding = tmp_player_bidding
-                .into_iter()
-                .map(|(x, y)| (*x, *y))
-                .collect();
+            let mut tmp_player_bidding: Vec<(_, _)> = player_bidding.into_iter().collect();
+            tmp_player_bidding.sort_unstable_by_key(|(_x, y)| u32::MAX - *y);
+            player_bidding = tmp_player_bidding.into_iter().collect();
             if app_state.cfg.game_rules.bidding.broadcast_bid_message {
                 let state = app_state.game_state.read().await;
                 state
