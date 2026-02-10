@@ -30,10 +30,10 @@ impl GameCfg {
     pub fn load_from(file_name: String) -> anyhow::Result<Self> {
         if std::path::Path::new(&file_name).exists() == false {
             let file = File::create(&file_name)?;
-            serde_yaml::to_writer::<File, GameCfg>(file, &Default::default())?;
+            yaml_serde::to_writer::<File, GameCfg>(file, &Default::default())?;
         }
         let file = File::open(&file_name)?;
-        let cfg = serde_yaml::from_reader(file);
+        let cfg = yaml_serde::from_reader(file);
         Ok(cfg?)
     }
 }
