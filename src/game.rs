@@ -4,7 +4,7 @@ use crate::enums::{
 };
 use crate::structs::{AppState, GameStateResponse};
 use crate::utils::{discount_recipe, parse_recipe, verify_recipe};
-use rand::Rng;
+use rand::RngExt;
 use std::collections::{HashMap, HashSet};
 use std::process::exit;
 use std::sync::Arc;

@@ -2,8 +2,8 @@ use crate::config::GameCfg;
 use crate::enums::{
     Building, Items, PlayerToServerMessage, ServerBroadcastMessage, ServerToPlayerMessage,
 };
+use rand::RngExt;
 use rand_chacha::ChaCha20Rng;
-use rand_chacha::rand_core::RngCore;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -209,10 +209,10 @@ impl GameState {
         });
         let sze = self.current_deck.len();
         for i in 0..sze {
-            let index = rng.next_u32() % (sze as u32);
+            let index = rng.random_range(0..sze);
             let tmp = self.current_deck[i];
-            self.current_deck[i] = self.current_deck[index as usize];
-            self.current_deck[index as usize] = tmp;
+            self.current_deck[i] = self.current_deck[index];
+            self.current_deck[index] = tmp;
         }
         let mut cards: Vec<Items> = self
             .current_deck

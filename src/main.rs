@@ -11,7 +11,7 @@ use config::GameCfg;
 use rand_chacha::ChaCha20Rng;
 use rand_chacha::rand_core::SeedableRng;
 use rand_seeder::SipHasher;
-use rand_seeder::rand_core::RngCore;
+use rand_seeder::rand_core::Rng;
 use routes::{root, ws_handler};
 use std::sync::Arc;
 use structs::{AppState, GameState};
@@ -42,7 +42,7 @@ async fn main() {
     let mut rng = ChaCha20Rng::from_seed(seed);
     drop(hasher_rng);
     if cfg.server.seed.clone() == "__set_seed_here__" {
-        rng = ChaCha20Rng::from_os_rng();
+        rng = ChaCha20Rng::from_rng(&mut rand::rng());
     }
     debug!("种子为：{:?}", rng.get_seed());
     // 游戏状态对象创建
