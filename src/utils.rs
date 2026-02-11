@@ -11,7 +11,7 @@ pub fn parse_recipe(recipe: Vec<&'static str>) -> (HashMap<Items, u32>, HashMap<
         let rest = parts[1].trim(); // "123*5"
         let numbers: Vec<&str> = rest.split('*').collect();
         let num1 = numbers[0].trim();
-        let num2 = numbers[1].trim().parse::<u32>().unwrap();
+        let num2 = numbers[1].trim().parse::<u32>().unwrap_or(0);
         if prefix == "item" || prefix == "items" {
             let this_item: Items = Items::try_from(num1).unwrap();
             let amount = items.get(&this_item);
@@ -25,7 +25,7 @@ pub fn parse_recipe(recipe: Vec<&'static str>) -> (HashMap<Items, u32>, HashMap<
             }
         } else if prefix == "building" || prefix == "buildings" {
             let this_building: Building = Building::try_from(num1).unwrap();
-            let amount = buildings.get(&this_building).unwrap();
+            let amount = buildings.get(&this_building).unwrap_or(&0);
             let amount = amount + num2;
             buildings.insert(this_building, amount);
         }
