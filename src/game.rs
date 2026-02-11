@@ -1386,6 +1386,29 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                             .await;
                                         continue;
                                     }
+                                    if !state
+                                        .players
+                                        .get(&uuid)
+                                        .unwrap()
+                                        .buildings
+                                        .contains(&Building::Bank)
+                                    {
+                                        let mut need_buildings = HashMap::new();
+                                        need_buildings.insert(Building::Bank, 1);
+                                        state
+                                            .send_to(
+                                                &uuid,
+                                                ServerToPlayerMessage::InvestmentResult {
+                                                    action,
+                                                    error: true,
+                                                    reason: Some(InvestmentError::NoBuildingHere {
+                                                        need_buildings,
+                                                    }),
+                                                },
+                                            )
+                                            .await;
+                                        continue;
+                                    }
                                     let limits = app_state.cfg.game_rules.investment.store.limits;
                                     if counts.get(&uuid).unwrap().get("store").unwrap() > &limits
                                         && limits != 0

@@ -181,6 +181,9 @@ pub enum InvestmentError {
     NoEnoughItem {
         need: HashMap<Items, u32>,
     },
+    NoBuildingHere {
+        need_buildings: HashMap<Building, u32>,
+    },
 }
 #[derive(Serialize, Clone, Debug)]
 #[serde(tag = "type", content = "target", rename_all = "snake_case")]
