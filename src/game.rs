@@ -410,10 +410,12 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                             .send_to(
                                                 &uuid,
                                                 ServerToPlayerMessage::InvestmentResult {
-                                                    action,
+                                                    action: action.clone(),
                                                     error: true,
                                                     reason: Some(
-                                                        InvestmentError::ActionIsNotEnabled {},
+                                                        InvestmentError::ActionIsNotEnabled {
+                                                            action,
+                                                        },
                                                     ),
                                                 },
                                             )
@@ -496,10 +498,12 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                             .send_to(
                                                 &uuid,
                                                 ServerToPlayerMessage::InvestmentResult {
-                                                    action,
+                                                    action: action.clone(),
                                                     error: true,
                                                     reason: Some(
-                                                        InvestmentError::ActionIsNotEnabled {},
+                                                        InvestmentError::ActionIsNotEnabled {
+                                                            action,
+                                                        },
                                                     ),
                                                 },
                                             )
@@ -542,9 +546,12 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                                 ServerToPlayerMessage::InvestmentResult {
                                                     action,
                                                     error: true,
-                                                    reason: Some(InvestmentError::NoEnoughFood {
-                                                        need: 1,
-                                                    }),
+                                                    reason: Some(
+                                                        InvestmentError::NoEnoughMaterials {
+                                                            need_items: [(Items::Food, 1)].into(),
+                                                            need_buildings: HashMap::new(),
+                                                        },
+                                                    ),
                                                 },
                                             )
                                             .await;
@@ -592,10 +599,12 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                             .send_to(
                                                 &uuid,
                                                 ServerToPlayerMessage::InvestmentResult {
-                                                    action,
+                                                    action: action.clone(),
                                                     error: true,
                                                     reason: Some(
-                                                        InvestmentError::ActionIsNotEnabled {},
+                                                        InvestmentError::ActionIsNotEnabled {
+                                                            action,
+                                                        },
                                                     ),
                                                 },
                                             )
@@ -603,7 +612,7 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                         continue;
                                     }
                                     drop(state);
-                                    match building {
+                                    match building.clone() {
                                         Building::Farm => {
                                             let (is_enabled, recipe) = {
                                                 let _state = app_state.game_state.read().await;
@@ -639,7 +648,9 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                                 state.send_to(&uuid, ServerToPlayerMessage::InvestmentResult {
                                                     action,
                                                     error: true,
-                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {}),
+                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {
+                                                        building
+                                                    }),
                                                 }).await;
                                                 continue;
                                             }
@@ -717,7 +728,9 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                                 state.send_to(&uuid, ServerToPlayerMessage::InvestmentResult {
                                                     action,
                                                     error: true,
-                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {}),
+                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {
+                                                        building
+                                                    }),
                                                 }).await;
                                                 continue;
                                             }
@@ -795,7 +808,9 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                                 state.send_to(&uuid, ServerToPlayerMessage::InvestmentResult {
                                                     action,
                                                     error: true,
-                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {}),
+                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {
+                                                        building
+                                                    }),
                                                 }).await;
                                                 continue;
                                             }
@@ -873,7 +888,9 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                                 state.send_to(&uuid, ServerToPlayerMessage::InvestmentResult {
                                                     action,
                                                     error: true,
-                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {}),
+                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {
+                                                        building
+                                                    }),
                                                 }).await;
                                                 continue;
                                             }
@@ -951,7 +968,9 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                                 state.send_to(&uuid, ServerToPlayerMessage::InvestmentResult {
                                                     action,
                                                     error: true,
-                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {}),
+                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {
+                                                        building
+                                                    }),
                                                 }).await;
                                                 continue;
                                             }
@@ -1029,7 +1048,9 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                                 state.send_to(&uuid, ServerToPlayerMessage::InvestmentResult {
                                                     action,
                                                     error: true,
-                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {}),
+                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {
+                                                        building
+                                                    }),
                                                 }).await;
                                                 continue;
                                             }
@@ -1107,7 +1128,9 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                                 state.send_to(&uuid, ServerToPlayerMessage::InvestmentResult {
                                                     action,
                                                     error: true,
-                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {}),
+                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {
+                                                        building
+                                                    }),
                                                 }).await;
                                                 continue;
                                             }
@@ -1185,7 +1208,9 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                                 state.send_to(&uuid, ServerToPlayerMessage::InvestmentResult {
                                                     action,
                                                     error: true,
-                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {}),
+                                                    reason: Some(InvestmentError::BuildingIsNotEnabled {
+                                                        building
+                                                    }),
                                                 }).await;
                                                 continue;
                                             }
@@ -1237,10 +1262,12 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                             .send_to(
                                                 &uuid,
                                                 ServerToPlayerMessage::InvestmentResult {
-                                                    action,
+                                                    action: action.clone(),
                                                     error: true,
                                                     reason: Some(
-                                                        InvestmentError::ActionIsNotEnabled {},
+                                                        InvestmentError::ActionIsNotEnabled {
+                                                            action,
+                                                        },
                                                     ),
                                                 },
                                             )
@@ -1293,9 +1320,12 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                                 ServerToPlayerMessage::InvestmentResult {
                                                     action,
                                                     error: true,
-                                                    reason: Some(InvestmentError::NoEnoughOre {
-                                                        need: 1,
-                                                    }),
+                                                    reason: Some(
+                                                        InvestmentError::NoEnoughMaterials {
+                                                            need_items: [(Items::Ore, 1)].into(),
+                                                            need_buildings: HashMap::new(),
+                                                        },
+                                                    ),
                                                 },
                                             )
                                             .await;
@@ -1353,10 +1383,12 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                             .send_to(
                                                 &uuid,
                                                 ServerToPlayerMessage::InvestmentResult {
-                                                    action,
+                                                    action: action.clone(),
                                                     error: true,
                                                     reason: Some(
-                                                        InvestmentError::ActionIsNotEnabled {},
+                                                        InvestmentError::ActionIsNotEnabled {
+                                                            action,
+                                                        },
                                                     ),
                                                 },
                                             )
@@ -1379,7 +1411,9 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                                     action,
                                                     error: true,
                                                     reason: Some(
-                                                        InvestmentError::BuildingIsNotEnabled {},
+                                                        InvestmentError::BuildingIsNotEnabled {
+                                                            building: Building::Bank,
+                                                        },
                                                     ),
                                                 },
                                             )
@@ -1393,17 +1427,19 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                         .buildings
                                         .contains(&Building::Bank)
                                     {
-                                        let mut need_buildings = HashMap::new();
-                                        need_buildings.insert(Building::Bank, 1);
                                         state
                                             .send_to(
                                                 &uuid,
                                                 ServerToPlayerMessage::InvestmentResult {
                                                     action,
                                                     error: true,
-                                                    reason: Some(InvestmentError::NoBuildingHere {
-                                                        need_buildings,
-                                                    }),
+                                                    reason: Some(
+                                                        InvestmentError::NoEnoughMaterials {
+                                                            need_items: [(item, count)].into(),
+                                                            need_buildings: [(Building::Bank, 1)]
+                                                                .into(),
+                                                        },
+                                                    ),
                                                 },
                                             )
                                             .await;
@@ -1440,9 +1476,13 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                                                 ServerToPlayerMessage::InvestmentResult {
                                                     action,
                                                     error: true,
-                                                    reason: Some(InvestmentError::NoEnoughItem {
-                                                        need: items,
-                                                    }),
+                                                    reason: Some(
+                                                        InvestmentError::NoEnoughMaterials {
+                                                            need_items: [(item, count)].into(),
+                                                            need_buildings: [(Building::Bank, 1)]
+                                                                .into(),
+                                                        },
+                                                    ),
                                                 },
                                             )
                                             .await;

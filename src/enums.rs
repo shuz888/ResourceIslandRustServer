@@ -163,25 +163,17 @@ pub enum InvestmentError {
     NoEnoughActionPoints {
         need: u32,
     },
-    NoEnoughFood {
-        need: u32,
-    },
     LimitsExceeded {
         limit: u32,
     },
-    ActionIsNotEnabled {},
-    BuildingIsNotEnabled {},
+    ActionIsNotEnabled {
+        action: InvestmentAction,
+    },
+    BuildingIsNotEnabled {
+        building: Building,
+    },
     NoEnoughMaterials {
         need_items: HashMap<Items, u32>,
-        need_buildings: HashMap<Building, u32>,
-    },
-    NoEnoughOre {
-        need: u32,
-    },
-    NoEnoughItem {
-        need: HashMap<Items, u32>,
-    },
-    NoBuildingHere {
         need_buildings: HashMap<Building, u32>,
     },
 }
