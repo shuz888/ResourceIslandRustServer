@@ -1902,16 +1902,70 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                 state.increase_phase().await;
                 continue;
             }
-            let (mark_up_when, discount_when, mark_up, discount) = (
-                app_state.cfg.game_rules.value_changing.mark_up_when,
-                app_state.cfg.game_rules.value_changing.discount_when,
-                app_state.cfg.game_rules.value_changing.mark_up,
-                app_state.cfg.game_rules.value_changing.discount,
-            );
             let mut state = app_state.game_state.write().await;
             let mut broadcasts = vec![];
             for (x, y) in take_count {
-                if y > mark_up_when && mark_up_when != 0 {
+                let (
+                    mark_up_when,
+                    discount_when,
+                    mark_up,
+                    discount,
+                    mark_up_max,
+                    discount_min,
+                    raw,
+                ) = (
+                    app_state
+                        .cfg
+                        .game_rules
+                        .value_changing
+                        .limits
+                        .get(&x)
+                        .unwrap()
+                        .mark_up_when,
+                    app_state
+                        .cfg
+                        .game_rules
+                        .value_changing
+                        .limits
+                        .get(&x)
+                        .unwrap()
+                        .discount_when,
+                    app_state
+                        .cfg
+                        .game_rules
+                        .value_changing
+                        .limits
+                        .get(&x)
+                        .unwrap()
+                        .mark_up,
+                    app_state
+                        .cfg
+                        .game_rules
+                        .value_changing
+                        .limits
+                        .get(&x)
+                        .unwrap()
+                        .discount,
+                    app_state
+                        .cfg
+                        .game_rules
+                        .value_changing
+                        .limits
+                        .get(&x)
+                        .unwrap()
+                        .mark_up_max,
+                    app_state
+                        .cfg
+                        .game_rules
+                        .value_changing
+                        .limits
+                        .get(&x)
+                        .unwrap()
+                        .discount_min,
+                    state.resource_values.get(&x).unwrap().clone(),
+                );
+                if y > mark_up_when && mark_up_when != 0 && (raw < mark_up_max || mark_up_max == 0)
+                {
                     let now;
                     {
                         let tmp = state.resource_values.get_mut(&x).unwrap();
@@ -1919,7 +1973,10 @@ pub async fn game_main_loop(app_state: Arc<AppState>) {
                         now = *tmp;
                     }
                     broadcasts.push((x, now));
-                } else if y < discount_when && discount_when != 0 {
+                } else if y < discount_when
+                    && discount_when != 0
+                    && (raw > discount_min || discount_min == 0)
+                {
                     let now;
                     {
                         let tmp = state.resource_values.get_mut(&x).unwrap();

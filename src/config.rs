@@ -183,23 +183,50 @@ impl_default_with!(PirateAttackCfg);
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ValueChangingCfg {
     pub enable: bool,
-    pub mark_up_when: u32,
-    pub discount_when: u32,
-    pub mark_up: u32,
-    pub discount: u32,
+    pub limits: HashMap<Items, ValueChangingLimits>,
 }
 impl ValueChangingCfg {
     fn with_defaults() -> Self {
+        let limits = vec![
+            Items::Ore,
+            Items::Food,
+            Items::Gold,
+            Items::Diamond,
+            Items::Iron,
+            Items::Wood,
+        ]
+        .into_iter()
+        .map(|x| (x, Default::default()))
+        .collect();
         Self {
             enable: true,
-            mark_up_when: 3,
-            discount_when: 3,
-            mark_up: 1,
-            discount: 1,
+            limits,
         }
     }
 }
 impl_default_with!(ValueChangingCfg);
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ValueChangingLimits {
+    pub mark_up_when: u32,
+    pub discount_when: u32,
+    pub mark_up: u32,
+    pub discount: u32,
+    pub mark_up_max: u32,
+    pub discount_min: u32,
+}
+impl ValueChangingLimits {
+    fn with_defaults() -> Self {
+        Self {
+            mark_up_when: 5,
+            discount_when: 2,
+            mark_up: 1,
+            discount: 1,
+            mark_up_max: 10,
+            discount_min: 5,
+        }
+    }
+}
+impl_default_with!(ValueChangingLimits);
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PrepareCfg {
     pub total_epochs: u32,
