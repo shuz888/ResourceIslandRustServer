@@ -160,7 +160,7 @@ async fn handler_reader(state: Arc<AppState>, uuid: Uuid, mut reader: SplitStrea
                                 PlayerInfoResponse::from(&*player.unwrap())
                             };
                             let resp = ServerToPlayerMessage::PlayerInfoResponse {
-                                uuid: uuid.clone(),
+                                uuid: requested_uuid,
                                 player: resp,
                             };
                             if sender.send(resp).await.is_err() {
